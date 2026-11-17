@@ -20,6 +20,7 @@ import {
   type Binding,
   type ControllerProfile,
   type PresetId,
+  type ThrottleMode,
 } from '../input/profiles';
 import { FREESTYLE_5IN, hoverThrottle } from '../sim/params';
 import { defaultSettings, parseSettings, replaceSettings, saveSettings, type Settings } from '../settings';
@@ -175,16 +176,20 @@ export class Menu {
       <h2>Throttle</h2>
       <div class="throttle-grid">
         <div>
-          <label class="check"><input type="checkbox" class="thr-centered"> Throttle stick springs back to the middle (gamepad)</label>
-          <p class="muted small thr-centered-note"></p>
-          <div class="row"><label>Mid (output at stick center) <input type="range" class="thr-mid" min="0.1" max="0.9" step="0.01"></label><span class="thr-mid-v"></span></div>
+          <div class="row"><label>Throttle stick <select class="thr-mode">
+            <option value="center-zero">Springs to middle: middle = 0%, up = 100%</option>
+            <option value="center-half">Springs to middle: middle = 50%</option>
+            <option value="full">No spring (radio): bottom = 0%, top = 100%</option>
+          </select></label></div>
+          <p class="muted small thr-mode-note"></p>
+          <div class="row"><label>Mid (output at 50% stick) <input type="range" class="thr-mid" min="0.1" max="0.9" step="0.01"></label><span class="thr-mid-v"></span></div>
           <div class="row"><label>Expo <input type="range" class="thr-expo" min="0" max="1" step="0.01"></label><span class="thr-expo-v"></span></div>
           <div class="row">
-            <button class="thr-hover">Hover at stick center</button>
+            <button class="thr-hover">Hover at half stick</button>
             <button class="thr-linear">Linear</button>
           </div>
-          <p class="muted small">This quad hovers at about ${pct(HOVER)} throttle. "Hover at stick center" sets Mid to that,
-          so letting go of a spring-loaded stick holds altitude. Expo gives finer control near the middle.</p>
+          <p class="muted small">This quad hovers at about ${pct(HOVER)} throttle. "Hover at half stick" bends the curve so
+          50% stick travel hovers. Expo gives finer control around that point.</p>
         </div>
         <canvas class="thr-curve" width="240" height="240" aria-label="Throttle curve"></canvas>
       </div>
@@ -258,17 +263,18 @@ export class Menu {
     this.slider(wrap, '.deadzone', '.deadzone-val', () => prof.deadzone, (v) => (prof.deadzone = v), pct);
 
     // Throttle settings.
-    const centered = wrap.querySelector<HTMLInputElement>('.thr-centered')!;
-    const note = wrap.querySelector<HTMLElement>('.thr-centered-note')!;
-    const setNote = () =>
-      (note.textContent = prof.throttleCentered
-        ? 'The stick at rest is exactly 50% stick. Push up for more, pull down for less.'
-        : 'The full stick travel is 0–100% (radio throttle without a spring).');
-    centered.checked = prof.throttleCentered;
-    setNote();
-    centered.addEventListener('change', () => {
-      prof.throttleCentered = centered.checked;
-      setNote();
+    const modeSel = wrap.querySelector<HTMLSelectElement>('.thr-mode')!;
+    const note = wrap.querySelector<HTMLElement>('.thr-mode-note')!;
+    const NOTES: Record<ThrottleMode, string> = {
+      'center-zero': 'Letting go of the stick is 0% throttle. Push up for throttle; the lower half of the stick does nothing.',
+      'center-half': 'Letting go of the stick is 50% throttle. Push up for more, pull down for less.',
+      full: 'The whole stick travel is 0–100%, for a radio throttle that stays where you leave it.',
+    };
+    modeSel.value = prof.throttleMode;
+    note.textContent = NOTES[prof.throttleMode];
+    modeSel.addEventListener('change', () => {
+      prof.throttleMode = modeSel.value as ThrottleMode;
+      note.textContent = NOTES[prof.throttleMode];
       this.commit();
     });
     const mid = this.slider(wrap, '.thr-mid', '.thr-mid-v', () => prof.throttleMid, (v) => (prof.throttleMid = v), pct);
@@ -408,7 +414,7 @@ export class Menu {
       m.min = lo;
       m.max = hi;
       // A spring-centered throttle rests in the middle, so its rest position becomes exactly 50%.
-      const restsCentered = ch !== 'throttle' || prof.throttleCentered;
+      const restsCentered = ch !== 'throttle' || prof.throttleMode !== 'full';
       m.center = restsCentered ? (pad.axes[m.axis] ?? 0) : (lo + hi) / 2;
       done.push(ch);
     }
@@ -468,8 +474,10 @@ export class Menu {
       const b = prof[a.key];
       el?.classList.toggle('on', !!b && bindingOn(b, pad));
     }
-    const thrStick = readThrottleStick(axes[prof.throttle.axis] ?? 0, prof.throttle, prof.throttleCentered);
-    this.updateGimbals(thrStick);
+    const thrRaw = axes[prof.throttle.axis] ?? 0;
+    const thrStick = readThrottleStick(thrRaw, prof.throttle, prof.throttleMode, prof.deadzone);
+    // The stick view shows where the stick physically is, which for spring sticks is not the throttle value.
+    this.updateGimbals(prof.throttleMode === 'full' ? thrStick : 0.5 + 0.5 * readCentered(thrRaw, prof.throttle, 0));
     const curve = this.body.querySelector<HTMLCanvasElement>('.thr-curve');
     if (curve) drawThrottleCurve(curve, prof, thrStick);
 
@@ -799,9 +807,9 @@ export class Menu {
       </table>
       <h2>PS5 DualSense defaults (Mode 2)</h2>
       <p>Left stick: throttle and yaw. Right stick: pitch and roll. R1 arm, Cross reset, Triangle angle mode, Square chase camera, Options menu.</p>
-      <p>The throttle stick springs back to the middle, which is 50% throttle. The quad hovers at about ${pct(HOVER)}, so hold the
-      stick a little below the middle to hover, or use <b>Controls → Throttle → Hover at stick center</b> to make the middle hover.
-      To arm, hold the throttle stick all the way down and press R1.</p>
+      <p>The throttle stick springs back to the middle, and the middle is 0% throttle: push up to climb, let go to cut the
+      throttle. The quad hovers at about ${pct(HOVER)} of the upward travel. Press R1 with the stick resting to arm.
+      You can change this in <b>Controls → Throttle</b>.</p>
       <h2>Radiomaster Pocket</h2>
       <p>Set the radio to USB Joystick mode. The default mapping is AETR with CH5 as the arm switch. Use Detect and Bind in Controls if your channels differ.</p>`;
   }

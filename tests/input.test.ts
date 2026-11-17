@@ -11,10 +11,20 @@ describe('controller profiles', () => {
     expect(detectPreset({ id: 'Xbox Wireless Controller', mapping: 'standard' })).toBe('generic');
   });
 
-  it('reads PS5 throttle with the spring-centered stick at 50%', () => {
+  it('reads PS5 throttle as 0% with the spring-centered stick at rest, 100% at full up', () => {
     const p = PRESETS.ps5.make();
-    expect(readThrottle(0, p)).toBeCloseTo(0.5);
+    expect(readThrottle(0, p)).toBe(0);
+    expect(readThrottle(0.03, p)).toBe(0); // small drift below the deadzone
+    expect(readThrottle(-0.03, p)).toBe(0);
     expect(readThrottle(-1, p)).toBeCloseTo(1); // stick up reads -1
+    expect(readThrottle(-0.525, p)).toBeCloseTo(0.5);
+    expect(readThrottle(1, p)).toBe(0); // pulling down stays at 0%
+  });
+
+  it('can still read a PS5 throttle with the middle at 50%', () => {
+    const p = { ...PRESETS.ps5.make(), throttleMode: 'center-half' as const };
+    expect(readThrottle(0, p)).toBeCloseTo(0.5);
+    expect(readThrottle(-1, p)).toBeCloseTo(1);
     expect(readThrottle(1, p)).toBeCloseTo(0);
   });
 
@@ -36,18 +46,20 @@ describe('controller profiles', () => {
     expect(readCentered(0.95, m, 0)).toBeCloseTo(1);
     expect(readCentered(-0.9, m, 0)).toBeCloseTo(-1);
     const t = { axis: 2, invert: false, min: -0.98, center: 0, max: 0.97 };
-    expect(readThrottleStick(-0.98, t, false)).toBeCloseTo(0);
-    expect(readThrottleStick(0.97, t, false)).toBeCloseTo(1);
+    expect(readThrottleStick(-0.98, t, 'full')).toBeCloseTo(0);
+    expect(readThrottleStick(0.97, t, 'full')).toBeCloseTo(1);
   });
 
-  it('keeps a spring-centered throttle at exactly 50% even with uneven travel', () => {
+  it('keeps a calibrated spring stick exactly at its rest value even with uneven travel', () => {
     // A worn stick: rests at 0.03, reaches -0.92 up and 1.0 down.
     const m = { axis: 1, invert: true, min: -0.92, center: 0.03, max: 1 };
-    expect(readThrottleStick(0.03, m, true)).toBeCloseTo(0.5);
-    expect(readThrottleStick(-0.92, m, true)).toBeCloseTo(1);
-    expect(readThrottleStick(1, m, true)).toBeCloseTo(0);
+    expect(readThrottleStick(0.03, m, 'center-zero')).toBe(0);
+    expect(readThrottleStick(-0.92, m, 'center-zero')).toBeCloseTo(1);
+    expect(readThrottleStick(0.03, m, 'center-half')).toBeCloseTo(0.5);
+    expect(readThrottleStick(-0.92, m, 'center-half')).toBeCloseTo(1);
+    expect(readThrottleStick(1, m, 'center-half')).toBeCloseTo(0);
     // The same stick read as a full-travel radio throttle would not rest at 50%.
-    expect(readThrottleStick(0.03, m, false)).not.toBeCloseTo(0.5, 2);
+    expect(readThrottleStick(0.03, m, 'full')).not.toBeCloseTo(0.5, 2);
   });
 
   it('throttle curve: mid sets the output at stick center, ends stay at 0 and 100%', () => {
@@ -72,11 +84,12 @@ describe('controller profiles', () => {
 
   it('upgrades profiles saved before throttle settings existed', () => {
     const old = { ...PRESETS.ps5.make() } as Record<string, unknown>;
-    delete old.throttleCentered;
+    delete old.throttleMode;
     delete old.throttleMid;
     delete old.throttleExpo;
     const p = normalizeProfile(old)!;
-    expect(p.throttleCentered).toBe(true);
+    expect(p.throttleMode).toBe('center-zero');
+    expect(normalizeProfile({ ...old, throttleMode: 'center-half' })!.throttleMode).toBe('center-half');
     expect(p.throttleMid).toBe(0.5);
     expect(normalizeProfile('junk')).toBeNull();
   });

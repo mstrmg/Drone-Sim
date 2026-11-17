@@ -20,15 +20,15 @@ Chrome or Edge recommended. Controllers only appear after you press a button or 
 |---|---|---|---|
 | Throttle / yaw | Left stick | Left stick | W / S (held), A / D |
 | Pitch / roll | Right stick | Right stick | Arrow keys |
-| Arm | R1 (throttle low) | CH5 switch (default) | Space |
+| Arm | R1 (stick resting) | CH5 switch (default) | Space |
 | Reset | Cross | bind in Controls | R |
 | Acro / angle | Triangle | bind in Controls | M |
 | FPV / chase cam | Square | bind in Controls | C |
 | Menu | Options | – | Esc |
 
-The PS5 throttle stick springs back to the middle, which reads as exactly 50% stick (also after calibration,
-even if the stick's travel is uneven). Hover is around 29% throttle. *Controls → Throttle → Hover at stick center*
-bends the throttle curve so the resting stick hovers. Hold the stick low while pressing R1 to arm.
+The PS5 throttle stick springs back to the middle, and **the middle is 0% throttle**: push up for 0–100%,
+let go to cut the throttle (the lower half does nothing). The quad hovers at about 29% of the upward travel.
+Press R1 with the stick resting to arm. *Controls → Throttle* also offers "middle = 50%" and full-travel radio modes.
 
 **Radiomaster Pocket:** connect USB-C and choose *USB Joystick (HID)* on the radio. Default mapping is AETR
 (axes 0–3) with CH5 as the arm switch. Open *Controls* to run *Calibrate sticks*, use *Detect* to remap a
@@ -37,7 +37,7 @@ channel, and *Bind* to put reset, angle mode or the chase camera on a switch.
 ## Setup screens (Esc)
 
 - **Controls** – live stick view, mapping with Detect, a two-step calibration wizard, deadzone, throttle curve
-  (spring-centered toggle, mid point, expo, with a live curve and the hover line), switch/button bindings, raw input.
+  (spring stick: middle = 0% or 50%, or full-travel radio; mid point, expo, live curve and hover line), switch/button bindings, raw input.
 - **Rates** – Betaflight or Actual rates, presets, per-axis values and a curve preview with live stick dots.
 - **Camera** – uptilt and FOV with presets; the panel docks to the side so you see the FPV view change.
 - **General** – flight mode, keyboard strength, copy / paste / download / load / reset settings.

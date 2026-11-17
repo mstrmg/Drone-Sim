@@ -21,12 +21,9 @@ export interface ControllerProfile {
   roll: AxisMap;
   /** Deadzone for roll / pitch / yaw, 0..0.3. */
   deadzone: number;
-  /**
-   * True for a throttle stick that springs back to the middle (gamepads): the calibrated
-   * rest position is always exactly 50% stick, whatever the stick's travel above and below.
-   */
-  throttleCentered: boolean;
-  /** Throttle output at 50% stick, 0.1..0.9. 0.5 is linear. Lower it so hover sits at the stick center. */
+  /** How the throttle stick's travel maps to 0..100% stick. See ThrottleMode. */
+  throttleMode: ThrottleMode;
+  /** Throttle output at 50% stick, 0.1..0.9. 0.5 is linear. */
   throttleMid: number;
   /** Throttle expo around the mid point, 0..1. Flattens the curve near the middle for finer hover control. */
   throttleExpo: number;
@@ -37,6 +34,15 @@ export interface ControllerProfile {
 }
 
 export type PresetId = 'ps5' | 'radio' | 'generic';
+
+/**
+ * - `center-zero`: spring-loaded gamepad stick. Resting in the middle is 0%, pushing up goes to 100%,
+ *   pulling down stays at 0%. Letting go cuts the throttle, like dropping the throttle on a radio.
+ * - `center-half`: spring-loaded gamepad stick. Resting in the middle is 50%, up is 100%, down is 0%.
+ * - `full`: radio throttle without a spring. The full calibrated travel is 0..100%.
+ */
+export type ThrottleMode = 'center-zero' | 'center-half' | 'full';
+export const THROTTLE_MODES: ThrottleMode[] = ['center-zero', 'center-half', 'full'];
 
 const axis = (index: number, invert = false): AxisMap => ({ axis: index, invert, min: -1, center: 0, max: 1 });
 
@@ -52,7 +58,7 @@ export const PRESETS: Record<PresetId, { label: string; make: () => ControllerPr
       pitch: axis(3, true),
       roll: axis(2),
       deadzone: 0.05,
-      throttleCentered: true,
+      throttleMode: 'center-zero',
       throttleMid: 0.5,
       throttleExpo: 0,
       arm: { kind: 'button', index: 5 }, // R1
@@ -71,7 +77,7 @@ export const PRESETS: Record<PresetId, { label: string; make: () => ControllerPr
       pitch: axis(1),
       roll: axis(0),
       deadzone: 0.0,
-      throttleCentered: false,
+      throttleMode: 'full',
       throttleMid: 0.5,
       throttleExpo: 0,
       arm: { kind: 'axis', index: 4, threshold: 0, above: true },
@@ -110,12 +116,15 @@ export function readCentered(raw: number, m: AxisMap, deadzone: number): number 
 
 /**
  * Normalize the throttle channel to 0..1 stick position.
- * Spring-centered sticks map the calibrated center to exactly 0.5 and each half of the travel to its own half,
- * so an uneven stick still rests at 50%. Radio throttles use the full calibrated travel.
+ * Spring-loaded sticks are read from their calibrated center, each half of the travel scaled on its own, so an
+ * uneven stick still rests at exactly 0% (center-zero) or 50% (center-half). `deadzone` keeps stick drift at rest
+ * from creeping the throttle up in center-zero mode. Radio throttles use the full calibrated travel.
  */
-export function readThrottleStick(raw: number, m: AxisMap, centered: boolean): number {
+export function readThrottleStick(raw: number, m: AxisMap, mode: ThrottleMode, deadzone = 0): number {
   let t: number;
-  if (centered) {
+  if (mode === 'center-zero') {
+    t = Math.max(0, readCentered(raw, m, deadzone));
+  } else if (mode === 'center-half') {
     t = 0.5 + 0.5 * readCentered(raw, m, 0);
   } else {
     const span = m.max - m.min;
@@ -137,8 +146,12 @@ export function throttleCurve(stick: number, mid: number, expo: number): number 
 }
 
 /** Throttle 0..1 for a profile: stick reading followed by the throttle curve. */
-export function readThrottle(raw: number, prof: Pick<ControllerProfile, 'throttle' | 'throttleCentered' | 'throttleMid' | 'throttleExpo'>): number {
-  return throttleCurve(readThrottleStick(raw, prof.throttle, prof.throttleCentered), prof.throttleMid, prof.throttleExpo);
+export function readThrottle(
+  raw: number,
+  prof: Pick<ControllerProfile, 'throttle' | 'throttleMode' | 'throttleMid' | 'throttleExpo' | 'deadzone'>,
+): number {
+  const stick = readThrottleStick(raw, prof.throttle, prof.throttleMode, prof.deadzone);
+  return throttleCurve(stick, prof.throttleMid, prof.throttleExpo);
 }
 
 /** Validates a saved profile and fills in fields added in later versions. Returns null if unusable. */
@@ -166,7 +179,7 @@ export function normalizeProfile(raw: unknown): ControllerProfile | null {
     pitch: okAxis(p.pitch) ? { ...p.pitch, invert: !!p.pitch.invert } : base.pitch,
     roll: okAxis(p.roll) ? { ...p.roll, invert: !!p.roll.invert } : base.roll,
     deadzone: num(p.deadzone, 0, 0.3, base.deadzone),
-    throttleCentered: typeof p.throttleCentered === 'boolean' ? p.throttleCentered : base.throttleCentered,
+    throttleMode: THROTTLE_MODES.includes(p.throttleMode as ThrottleMode) ? (p.throttleMode as ThrottleMode) : base.throttleMode,
     throttleMid: num(p.throttleMid, 0.1, 0.9, base.throttleMid),
     throttleExpo: num(p.throttleExpo, 0, 1, base.throttleExpo),
     arm: bind(p.arm, base.arm),
