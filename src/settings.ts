@@ -1,6 +1,6 @@
-import { DEFAULT_RATES, type Rates } from './fc/rates';
+import { DEFAULT_RATES, normalizeRates, type Rates } from './fc/rates';
 import type { FlightMode } from './fc/flightController';
-import type { ControllerProfile } from './input/profiles';
+import { normalizeProfile, type ControllerProfile } from './input/profiles';
 
 export interface Settings {
   rates: Rates;
@@ -19,7 +19,7 @@ export interface Settings {
   keyboardStick: number;
 }
 
-const KEY = 'fpvsim.settings.v1';
+export const SETTINGS_KEY = 'fpvsim.settings.v1';
 
 export function defaultSettings(): Settings {
   return {
@@ -32,28 +32,51 @@ export function defaultSettings(): Settings {
   };
 }
 
-export function loadSettings(): Settings {
+/** Builds complete settings from saved or imported JSON, filling anything missing with defaults. */
+export function parseSettings(raw: unknown): Settings {
   const d = defaultSettings();
+  if (!raw || typeof raw !== 'object') return d;
+  const s = raw as Partial<Settings>;
+  const num = (v: unknown, lo: number, hi: number, def: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : def;
+  const profiles: Record<string, ControllerProfile> = {};
+  if (s.profiles && typeof s.profiles === 'object') {
+    for (const [id, p] of Object.entries(s.profiles)) {
+      const prof = normalizeProfile(p);
+      if (prof) profiles[id] = prof;
+    }
+  }
+  return {
+    rates: normalizeRates(s.rates),
+    camera: {
+      uptilt: num(s.camera?.uptilt, 0, 60, d.camera.uptilt),
+      fov: num(s.camera?.fov, 70, 150, d.camera.fov),
+    },
+    flightMode: s.flightMode === 'angle' ? 'angle' : 'acro',
+    profiles,
+    preferredPad: typeof s.preferredPad === 'string' ? s.preferredPad : '',
+    keyboardStick: num(s.keyboardStick, 0.2, 1, d.keyboardStick),
+  };
+}
+
+export function loadSettings(): Settings {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return d;
-    const s = JSON.parse(raw) as Partial<Settings>;
-    return {
-      ...d,
-      ...s,
-      rates: { ...d.rates, ...s.rates },
-      camera: { ...d.camera, ...s.camera },
-      profiles: s.profiles ?? {},
-    };
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? parseSettings(JSON.parse(raw)) : defaultSettings();
   } catch {
-    return d;
+    return defaultSettings();
   }
 }
 
 export function saveSettings(s: Settings): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(s));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   } catch {
     // Storage may be unavailable (private mode); settings then last for the session only.
   }
+}
+
+/** Replaces the contents of `target` in place, so everything holding a reference sees the change. */
+export function replaceSettings(target: Settings, next: Settings): void {
+  Object.assign(target, next);
 }

@@ -56,3 +56,9 @@ export const FREESTYLE_5IN: QuadParams = {
 
 export const GRAVITY = 9.81;
 export const AIR_DENSITY = 1.225;
+
+/** Throttle (0..1, before the ESC idle offset) at which the quad hovers in still air. */
+export function hoverThrottle(p: QuadParams): number {
+  const w = Math.sqrt((p.mass * GRAVITY) / (4 * p.maxThrust));
+  return (w - p.motorIdle) / (1 - p.motorIdle);
+}

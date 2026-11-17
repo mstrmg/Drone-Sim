@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three';
 import { Pt1 } from './filters';
-import { betaflightRate, type Rates } from './rates';
+import { rateFor, type Rates } from './rates';
 import { MOTOR_LAYOUT } from '../sim/quad';
 
 export type FlightMode = 'acro' | 'angle';
@@ -106,9 +106,9 @@ export class FlightController {
   update(sticks: Sticks, gyro: Record<Axis, number>, attitude: Quaternion): number[] {
     const dt = this.dt;
     const sp = this.setpoint;
-    sp.roll = betaflightRate(sticks.roll, this.rates.roll);
-    sp.pitch = betaflightRate(sticks.pitch, this.rates.pitch);
-    sp.yaw = betaflightRate(sticks.yaw, this.rates.yaw);
+    sp.roll = rateFor(sticks.roll, this.rates, 'roll');
+    sp.pitch = rateFor(sticks.pitch, this.rates, 'pitch');
+    sp.yaw = rateFor(sticks.yaw, this.rates, 'yaw');
     if (this.mode === 'angle') this.applyAngleMode(sticks, attitude);
 
     if (sticks.throttle > AIRMODE_START_THROTTLE) this.airmodeActive = true;

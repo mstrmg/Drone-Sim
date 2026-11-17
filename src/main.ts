@@ -3,7 +3,7 @@ import './style.css';
 import { FlightController, DEFAULT_PIDS, type Sticks } from './fc/flightController';
 import { InputManager, shortName } from './input/inputManager';
 import { QuadModel } from './render/quadModel';
-import { loadSettings } from './settings';
+import { SETTINGS_KEY, loadSettings } from './settings';
 import { FREESTYLE_5IN } from './sim/params';
 import { Quad } from './sim/quad';
 import { Menu } from './ui/menu';
@@ -21,7 +21,7 @@ const OUT_OF_BOUNDS = 900;
 
 const app = document.getElementById('app')!;
 const settings = loadSettings();
-const firstVisit = !localStorage.getItem('fpvsim.settings.v1');
+const firstVisit = !localStorage.getItem(SETTINGS_KEY);
 
 // ---------------------------------------------------------------- Rendering setup
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -117,7 +117,7 @@ function frame(now: number): void {
 
   const inp = input.poll(dt);
   if (inp.menuToggle) menu.toggle();
-  menu.update();
+  menu.update(inp.sticks);
 
   if (!menu.isOpen) {
     if (inp.reset) resetQuad();

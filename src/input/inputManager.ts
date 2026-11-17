@@ -104,7 +104,7 @@ export class InputManager {
         roll: readCentered(a[prof.roll.axis] ?? 0, prof.roll, prof.deadzone),
         pitch: readCentered(a[prof.pitch.axis] ?? 0, prof.pitch, prof.deadzone),
         yaw: readCentered(a[prof.yaw.axis] ?? 0, prof.yaw, prof.deadzone),
-        throttle: readThrottle(a[prof.throttle.axis] ?? 0, prof.throttle),
+        throttle: readThrottle(a[prof.throttle.axis] ?? 0, prof),
       };
       // Keep the keyboard throttle in sync so switching sources doesn't jump.
       this.kbThrottle = frame.sticks.throttle;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { betaflightRate, maxRate } from '../src/fc/rates';
+import { actualRate, betaflightRate, maxRate } from '../src/fc/rates';
 
 describe('Betaflight rates', () => {
   it('matches the configurator max rate for common settings', () => {
@@ -22,5 +22,13 @@ describe('Betaflight rates', () => {
     const exp = { rcRate: 1, superRate: 0.7, expo: 0.5 };
     expect(betaflightRate(0.3, exp)).toBeLessThan(betaflightRate(0.3, flat));
     expect(maxRate(exp)).toBeCloseTo(maxRate(flat));
+  });
+
+  it('Actual rates hit center sensitivity near center and max at full stick', () => {
+    const r = { center: 200, max: 800, expo: 0.5 };
+    expect(actualRate(1, r)).toBeCloseTo(800);
+    expect(actualRate(-1, r)).toBeCloseTo(-800);
+    expect(actualRate(0.001, r) / 0.001).toBeCloseTo(200, 0);
+    expect(actualRate(0, r)).toBe(0);
   });
 });

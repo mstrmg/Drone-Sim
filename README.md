@@ -26,12 +26,21 @@ Chrome or Edge recommended. Controllers only appear after you press a button or 
 | FPV / chase cam | Square | bind in Controls | C |
 | Menu | Options | – | Esc |
 
-The PS5 throttle stick springs back to the middle, which reads as 50% throttle. Hover is around 29%.
-Hold the stick low while pressing R1 to arm.
+The PS5 throttle stick springs back to the middle, which reads as exactly 50% stick (also after calibration,
+even if the stick's travel is uneven). Hover is around 29% throttle. *Controls → Throttle → Hover at stick center*
+bends the throttle curve so the resting stick hovers. Hold the stick low while pressing R1 to arm.
 
 **Radiomaster Pocket:** connect USB-C and choose *USB Joystick (HID)* on the radio. Default mapping is AETR
 (axes 0–3) with CH5 as the arm switch. Open *Controls* to run *Calibrate sticks*, use *Detect* to remap a
 channel, and *Bind* to put reset, angle mode or the chase camera on a switch.
+
+## Setup screens (Esc)
+
+- **Controls** – live stick view, mapping with Detect, a two-step calibration wizard, deadzone, throttle curve
+  (spring-centered toggle, mid point, expo, with a live curve and the hover line), switch/button bindings, raw input.
+- **Rates** – Betaflight or Actual rates, presets, per-axis values and a curve preview with live stick dots.
+- **Camera** – uptilt and FOV with presets; the panel docks to the side so you see the FPV view change.
+- **General** – flight mode, keyboard strength, export / import / reset settings.
 
 ## How it works
 
