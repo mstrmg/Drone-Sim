@@ -8,6 +8,7 @@ import { FREESTYLE_5IN } from './sim/params';
 import { Quad } from './sim/quad';
 import { Menu } from './ui/menu';
 import { Osd } from './ui/osd';
+import { ColliderGrid, type Collider } from './sim/colliders';
 import { disposeGroup, type Field } from './world/env';
 import { MAPS, type MapId } from './world/maps';
 
@@ -31,11 +32,14 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xc9dcec, 120, 900);
+const pmrem = new THREE.PMREMGenerator(renderer);
+let envTarget: THREE.WebGLRenderTarget | null = null;
 let field: Field;
+let grid: ColliderGrid;
 let currentMap: MapId | null = null;
 
 function loadMap(id: MapId): void {
@@ -45,6 +49,15 @@ function loadMap(id: MapId): void {
   }
   field = MAPS[id].build(renderer.capabilities.getMaxAnisotropy());
   scene.add(field.group);
+  scene.fog = field.fog;
+  grid = new ColliderGrid(field.colliders);
+  // Image-based lighting from the sky, so metal and shaded sides pick up the sky colour.
+  const envScene = new THREE.Scene();
+  envScene.add(new THREE.Mesh(field.sky.mesh.geometry, field.sky.mesh.material));
+  envTarget?.dispose();
+  envTarget = pmrem.fromScene(envScene, 0.04, 0.1, 3000);
+  scene.environment = envTarget.texture;
+  scene.environmentIntensity = 0.55;
   currentMap = id;
 }
 loadMap(settings.map);
@@ -77,6 +90,7 @@ const state = {
 let prevSticks: Sticks = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
 let accumulator = 0;
 const chasePos = new THREE.Vector3();
+const nearby: Collider[] = [];
 
 function applySettings(): void {
   if (settings.map !== currentMap) {
@@ -160,6 +174,7 @@ function frame(now: number): void {
     let steps = Math.floor(accumulator / PHYS_DT);
     accumulator -= steps * PHYS_DT;
     steps = Math.min(steps, MAX_STEPS_PER_FRAME);
+    grid.query(quad.position, 2 + quad.velocity.length() * Math.max(dt, steps * PHYS_DT) * 1.5, nearby);
     const s0 = prevSticks;
     const s1 = inp.sticks;
     const sticks: Sticks = { ...s1 };
@@ -170,7 +185,7 @@ function frame(now: number): void {
       sticks.yaw = s0.yaw + (s1.yaw - s0.yaw) * a;
       sticks.throttle = s0.throttle + (s1.throttle - s0.throttle) * a;
       const out = state.armed ? fc.update(sticks, quad.gyroDegPerSec(), quad.orientation) : null;
-      const res = quad.step(PHYS_DT, out, field.colliders);
+      const res = quad.step(PHYS_DT, out, nearby);
       if (res.impactSpeed > CRASH_SPEED && !state.crashed) {
         state.crashed = true;
         state.armed = false;
@@ -211,8 +226,10 @@ function frame(now: number): void {
   }
 
   // Keep the shadow area centered on the quad.
-  field.sun.position.copy(quad.position).add(new THREE.Vector3(60, 100, 40));
+  field.sun.position.copy(quad.position).addScaledVector(field.sunDir, 150);
   field.sun.target.position.copy(quad.position);
+  field.sky.mesh.position.copy(camera.position);
+  field.sky.update(now / 1000);
 
   if (performance.now() > state.warningUntil) state.warning = '';
   osd.update({
@@ -250,4 +267,4 @@ else showToast('Press any button on your controller to connect it · Esc for men
 requestAnimationFrame(frame);
 
 // Handle for automated browser tests and debugging.
-(window as unknown as { __sim: unknown }).__sim = { quad, fc, state, settings, input, menu };
+(window as unknown as { __sim: unknown }).__sim = { quad, fc, state, settings, input, menu, renderer, scene, camera, get field() { return field; } };

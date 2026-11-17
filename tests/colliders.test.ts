@@ -59,3 +59,23 @@ describe('colliders', () => {
     expect(quad.position.y - bandoTerrain(quad.position.x, quad.position.z)).toBeLessThan(0.15);
   });
 });
+
+describe('collider grid', () => {
+  it('returns every collider that touches a query point', async () => {
+    const { ColliderGrid, CylinderCollider, GroundCollider } = await import('../src/sim/colliders');
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const all = [new GroundCollider(0)] as import('../src/sim/colliders').Collider[];
+    for (let i = 0; i < 400; i++) {
+      const c = new Vector3((rnd() - 0.5) * 300, rnd() * 20, (rnd() - 0.5) * 300);
+      if (i % 2) all.push(new BoxCollider(c, new Vector3(0.2 + rnd() * 30, 0.2 + rnd() * 5, 0.2 + rnd() * 3), rnd() * 3));
+      else all.push(new CylinderCollider(c.x, c.z, 0, 5 + rnd() * 20, 0.2 + rnd() * 4));
+    }
+    const grid = new ColliderGrid(all);
+    for (let i = 0; i < 2000; i++) {
+      const p = new Vector3((rnd() - 0.5) * 320, rnd() * 22, (rnd() - 0.5) * 320);
+      const near = new Set(grid.query(p, 0.5));
+      for (const c of all) if (c.test(p, 0.3)) expect(near.has(c)).toBe(true);
+    }
+  });
+});

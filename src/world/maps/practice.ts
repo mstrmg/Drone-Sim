@@ -1,20 +1,22 @@
 import * as THREE from 'three';
 import { GroundCollider } from '../../sim/colliders';
 import { Builder } from '../builder';
-import { addLights, grassTexture, groundMesh, seededRandom, sky, type Field } from '../env';
+import { addLights, groundMesh, makeSky, mowedGrassTexture, seededRandom, type Field } from '../env';
 
 /** The open practice field from milestone 1: gates, containers, a small concrete frame, poles and trees. */
 export function buildPracticeField(maxAnisotropy: number): Field {
   const b = new Builder();
   b.colliders.push(new GroundCollider(0));
   const group = b.group;
-  group.add(groundMesh(grassTexture(), maxAnisotropy, 16));
+  group.add(groundMesh(mowedGrassTexture(), maxAnisotropy, 16));
+  const sunDir = new THREE.Vector3(0.5, 0.7, 0.35).normalize();
+  const sky = makeSky({ sunDir, cloudCover: 0.35 });
   const pad = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ color: 0x5a5c62, roughness: 0.95 }));
   pad.rotation.x = -Math.PI / 2;
   pad.position.y = 0.005;
   pad.receiveShadow = true;
-  group.add(pad, sky());
-  const sun = addLights(group);
+  group.add(pad, sky.mesh);
+  const sun = addLights(group, sunDir);
 
   // --- Gates: a loose line from the pad out to the bando.
   b.gate(0, -22, 0, 0xff6a13);
@@ -69,13 +71,23 @@ export function buildPracticeField(maxAnisotropy: number): Field {
     const x = Math.cos(ang) * dist;
     const z = Math.sin(ang) * dist - 60;
     if (Math.hypot(x, z) < 30) continue;
-    b.tree(x, z, 0.8 + rnd() * 0.7);
+    b.pine(x, z, 0.8 + rnd() * 0.7, 0, 0x2f5d2a);
   }
   // A small cluster near the field for tight lines.
-  b.tree(-8, -32, 1.0);
-  b.tree(-11, -36, 1.2);
-  b.tree(-5, -38, 0.9);
+  b.pine(-8, -32, 1.0, 0, 0x2f5d2a);
+  b.pine(-11, -36, 1.2, 0, 0x2f5d2a);
+  b.pine(-5, -38, 0.9, 0, 0x2f5d2a);
 
   b.finish();
-  return { group, colliders: b.colliders, spawn: new THREE.Vector3(0, 0.05, 0), spawnYaw: 0, sun, groundHeight: () => 0 };
+  return {
+    group,
+    colliders: b.colliders,
+    spawn: new THREE.Vector3(0, 0.05, 0),
+    spawnYaw: 0,
+    sun,
+    sunDir,
+    sky,
+    fog: new THREE.FogExp2(sky.horizon.getHex(), 0.0028),
+    groundHeight: () => 0,
+  };
 }

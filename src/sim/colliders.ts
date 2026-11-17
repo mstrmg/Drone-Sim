@@ -147,3 +147,65 @@ export class CylinderCollider implements Collider {
       : { normal: new Vector3(0, -1, 0), depth: bottom + r };
   }
 }
+
+/**
+ * Uniform grid over the ground plane so the physics loop only looks at colliders near the quad. Unbounded colliders
+ * (ground, terrain) and very large ones are always returned.
+ */
+export class ColliderGrid {
+  private readonly cells = new Map<number, Collider[]>();
+  private readonly always: Collider[] = [];
+  private readonly seen = new Set<Collider>();
+
+  constructor(
+    colliders: readonly Collider[],
+    private readonly cell = 12,
+  ) {
+    for (const c of colliders) {
+      if (!Number.isFinite(c.boundRadius) || c.boundRadius > cell * 8) {
+        this.always.push(c);
+        continue;
+      }
+      const r = c.boundRadius;
+      const i0 = Math.floor((c.boundCenter.x - r) / cell);
+      const i1 = Math.floor((c.boundCenter.x + r) / cell);
+      const k0 = Math.floor((c.boundCenter.z - r) / cell);
+      const k1 = Math.floor((c.boundCenter.z + r) / cell);
+      for (let i = i0; i <= i1; i++) {
+        for (let k = k0; k <= k1; k++) {
+          const key = ColliderGrid.key(i, k);
+          let list = this.cells.get(key);
+          if (!list) this.cells.set(key, (list = []));
+          list.push(c);
+        }
+      }
+    }
+  }
+
+  private static key(i: number, k: number): number {
+    return (i + 32768) * 65536 + (k + 32768);
+  }
+
+  /** Colliders whose cells overlap the square of half-size `r` around p, without duplicates. */
+  query(p: Vector3, r: number, out: Collider[] = []): Collider[] {
+    out.length = 0;
+    for (const c of this.always) out.push(c);
+    this.seen.clear();
+    const i0 = Math.floor((p.x - r) / this.cell);
+    const i1 = Math.floor((p.x + r) / this.cell);
+    const k0 = Math.floor((p.z - r) / this.cell);
+    const k1 = Math.floor((p.z + r) / this.cell);
+    for (let i = i0; i <= i1; i++) {
+      for (let k = k0; k <= k1; k++) {
+        const list = this.cells.get(ColliderGrid.key(i, k));
+        if (!list) continue;
+        for (const c of list) {
+          if (this.seen.has(c)) continue;
+          this.seen.add(c);
+          out.push(c);
+        }
+      }
+    }
+    return out;
+  }
+}

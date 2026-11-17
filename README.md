@@ -36,15 +36,24 @@ channel, and *Bind* to put reset, angle mode or the chase camera on a switch.
 
 ## Maps
 
-- **Industrial bando** (default) – a freestyle spot on a flat industrial lot ringed by rolling, wooded hills:
-  an abandoned factory (windows, big doors, a skylight gap with trusses, columns, a mezzanine), a three-deck open
-  parking structure with a lightwell, a water tower with cross-braced legs, a 38 m brick chimney, a container yard
-  with a gap and a leaning container, power lines with solid sagging cables, a billboard, a bus, barriers and trees.
+- **Industrial bando** (default) – a freestyle spot on a big industrial lot ringed by rolling, wooded hills:
+  - a brick factory with a skylight gap, trusses, a catwalk, an overhead crane beam, a mezzanine, roof clutter, a
+    rooftop sign to gap under and scaffolding on the east wall;
+  - a second warehouse with a collapsed roof section and pallet racking to thread, joined to the factory mezzanine
+    by an enclosed skybridge;
+  - a three-deck parking structure with a lightwell, an entrance ramp, parked cars and lamp posts;
+  - a 40 m tower crane with a lattice mast and a hanging load, three grain silos on legs with a sloping conveyor
+    gallery you can fly through, a pipe rack with two tiers, a water tower and a 38 m chimney;
+  - a container yard with a gap and a container tunnel, a rail yard with freight cars (one open gondola to dive
+    into, one derailed), a highway overpass with wall piers and a sign gantry, culvert pipes to fly through,
+    power lines with solid cables, and graffiti.
 - **Practice field** – the open field from the first version.
 
-Pick the map in *Esc → General*. All geometry is built in code (`src/world/maps/`); meshes sharing a material
-are merged into one draw call, and every solid piece has a matching collider (boxes with any rotation,
-vertical cylinders, and a heightfield for the hills).
+Pick the map in *Esc → General*. All geometry and textures are generated in code (`src/world/`), so the build stays
+one file with nothing to download. Meshes sharing a material are merged into one draw call, grass and rocks are
+instanced, and every solid piece has a matching collider (boxes with any rotation, vertical cylinders, and a
+heightfield for the hills). A grid over the ground hands the physics only the colliders near the quad. The sky,
+clouds, fog and image-based lighting come from one sky shader, and the sun's 4096 px shadow map follows the quad.
 
 ## Setup screens (Esc)
 

@@ -7,7 +7,7 @@ export type MapId = 'bando' | 'practice';
 export const MAPS: Record<MapId, { name: string; description: string; build: (maxAnisotropy: number) => Field }> = {
   bando: {
     name: 'Industrial bando',
-    description: 'Abandoned factory, parking structure, water tower, chimney, containers and power lines in rolling hills.',
+    description: 'Factory and warehouse with a skybridge, parking structure, tower crane, silos and conveyor, rail yard, overpass and more, in rolling hills.',
     build: buildBando,
   },
   practice: {
