@@ -1,6 +1,7 @@
 import { DEFAULT_RATES, normalizeRates, type Rates } from './fc/rates';
 import type { FlightMode } from './fc/flightController';
 import { normalizeProfile, type ControllerProfile } from './input/profiles';
+import { isMapId, type MapId } from './world/maps';
 
 export interface Settings {
   rates: Rates;
@@ -17,6 +18,8 @@ export interface Settings {
   preferredPad: string;
   /** Keyboard throttle/stick sensitivity. */
   keyboardStick: number;
+  /** Which map to fly. */
+  map: MapId;
 }
 
 export const SETTINGS_KEY = 'fpvsim.settings.v1';
@@ -29,6 +32,7 @@ export function defaultSettings(): Settings {
     profiles: {},
     preferredPad: '',
     keyboardStick: 0.6,
+    map: 'bando',
   };
 }
 
@@ -56,6 +60,7 @@ export function parseSettings(raw: unknown): Settings {
     profiles,
     preferredPad: typeof s.preferredPad === 'string' ? s.preferredPad : '',
     keyboardStick: num(s.keyboardStick, 0.2, 1, d.keyboardStick),
+    map: isMapId(s.map) ? s.map : d.map,
   };
 }
 

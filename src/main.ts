@@ -8,7 +8,8 @@ import { FREESTYLE_5IN } from './sim/params';
 import { Quad } from './sim/quad';
 import { Menu } from './ui/menu';
 import { Osd } from './ui/osd';
-import { buildField } from './world/field';
+import { disposeGroup, type Field } from './world/env';
+import { MAPS, type MapId } from './world/maps';
 
 /** Physics and flight controller loop rate. Rendering runs at display rate, decoupled. */
 const PHYS_HZ = 1000;
@@ -34,8 +35,19 @@ app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xc9dcec, 120, 900);
-const field = buildField(renderer.capabilities.getMaxAnisotropy());
-scene.add(field.group);
+let field: Field;
+let currentMap: MapId | null = null;
+
+function loadMap(id: MapId): void {
+  if (field) {
+    scene.remove(field.group);
+    disposeGroup(field.group);
+  }
+  field = MAPS[id].build(renderer.capabilities.getMaxAnisotropy());
+  scene.add(field.group);
+  currentMap = id;
+}
+loadMap(settings.map);
 
 const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.02, 3000);
 
@@ -67,6 +79,10 @@ let accumulator = 0;
 const chasePos = new THREE.Vector3();
 
 function applySettings(): void {
+  if (settings.map !== currentMap) {
+    loadMap(settings.map);
+    resetQuad();
+  }
   fc.rates = settings.rates;
   fc.mode = settings.flightMode;
   setFov();
@@ -165,7 +181,7 @@ function frame(now: number): void {
       }
     }
     prevSticks = { ...s1 };
-    if (quad.position.length() > OUT_OF_BOUNDS || quad.position.y < -5 || !Number.isFinite(quad.position.y)) resetQuad();
+    if (quad.position.length() > OUT_OF_BOUNDS || quad.position.y < field.groundHeight(quad.position.x, quad.position.z) - 5 || !Number.isFinite(quad.position.y)) resetQuad();
   } else {
     prevSticks = { ...inp.sticks };
   }
@@ -182,7 +198,7 @@ function frame(now: number): void {
     if (fwd.lengthSq() < 1e-4) fwd.set(0, 0, -1);
     fwd.normalize();
     const target = quad.position.clone().addScaledVector(fwd, -2.4).add(new THREE.Vector3(0, 0.9, 0));
-    target.y = Math.max(target.y, 0.3);
+    target.y = Math.max(target.y, field.groundHeight(target.x, target.z) + 0.3);
     chasePos.lerp(target, 1 - Math.exp(-dt * 6));
     camera.position.copy(chasePos);
     camera.lookAt(quad.position);
@@ -207,7 +223,7 @@ function frame(now: number): void {
     mode: settings.flightMode,
     airmode: state.armed && fc.isAirmodeActive,
     speedKmh: quad.velocity.length() * 3.6,
-    altitude: Math.max(0, quad.position.y - field.spawn.y),
+    altitude: Math.max(0, quad.position.y - field.groundHeight(quad.position.x, quad.position.z) - 0.035),
     source: inp.sourceName,
     warning: state.warning,
     chase: state.chase,

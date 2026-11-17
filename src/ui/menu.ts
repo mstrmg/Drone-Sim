@@ -23,6 +23,7 @@ import {
   type ThrottleMode,
 } from '../input/profiles';
 import { FREESTYLE_5IN, hoverThrottle } from '../sim/params';
+import { MAPS, type MapId } from '../world/maps';
 import { defaultSettings, parseSettings, replaceSettings, saveSettings, type Settings } from '../settings';
 
 type Channel = 'throttle' | 'yaw' | 'pitch' | 'roll';
@@ -691,6 +692,9 @@ export class Menu {
     const s = this.settings;
     const wrap = document.createElement('div');
     wrap.innerHTML = `
+      <h2>Map</h2>
+      <div class="row"><label>Map <select class="map-sel"></select></label></div>
+      <p class="muted small map-desc"></p>
       <h2>Flight</h2>
       <div class="row"><label>Flight mode <select class="mode">
         <option value="acro">Acro (rate)</option><option value="angle">Angle (self-level)</option></select></label></div>
@@ -710,6 +714,21 @@ export class Menu {
       <textarea class="settings-json" rows="6" spellcheck="false" aria-label="Settings as text"
         placeholder="Copied settings appear here. Paste settings here and press Load from text box."></textarea>
       <p class="settings-msg small" role="status"></p>`;
+    const mapSel = wrap.querySelector<HTMLSelectElement>('.map-sel')!;
+    const mapDesc = wrap.querySelector<HTMLElement>('.map-desc')!;
+    for (const [id, m] of Object.entries(MAPS)) {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = m.name;
+      mapSel.appendChild(o);
+    }
+    mapSel.value = s.map;
+    mapDesc.textContent = MAPS[s.map].description;
+    mapSel.addEventListener('change', () => {
+      s.map = mapSel.value as MapId;
+      mapDesc.textContent = MAPS[s.map].description;
+      this.commit(); // loads the map and resets the quad to its launch pad
+    });
     const mode = wrap.querySelector<HTMLSelectElement>('.mode')!;
     mode.value = s.flightMode;
     mode.addEventListener('change', () => {

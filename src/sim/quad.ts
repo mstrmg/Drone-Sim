@@ -26,6 +26,9 @@ const COLLISION_SPHERES: ReadonlyArray<{ o: Vector3; r: number }> = [
   { o: new Vector3(0, 0.01, -0.05), r: 0.025 },
 ];
 
+/** Radius around the center of mass that contains every collision sphere. */
+const QUAD_BOUND = 0.16;
+
 export interface StepResult {
   /** Largest normal impact speed (m/s) of any contact this step. 0 if none. */
   impactSpeed: number;
@@ -152,10 +155,15 @@ export class Quad {
   private collide(colliders: readonly Collider[]): StepResult {
     const result: StepResult = { impactSpeed: 0, touching: false };
     const m = this.params.mass;
+    // Broad phase: only shapes whose bounding sphere reaches the quad's (all collision spheres fit within 0.15 m).
+    const near: Collider[] = [];
+    for (const c of colliders) {
+      if (c.boundRadius === Infinity || this.position.distanceTo(c.boundCenter) < c.boundRadius + QUAD_BOUND) near.push(c);
+    }
     for (const sphere of COLLISION_SPHERES) {
       const r = sphere.o.clone().applyQuaternion(this.orientation);
       const p = new Vector3();
-      for (const c of colliders) {
+      for (const c of near) {
         p.copy(r).add(this.position);
         if (c.boundRadius !== Infinity && p.distanceTo(c.boundCenter) > c.boundRadius + sphere.r) continue;
         const hit = c.test(p, sphere.r);

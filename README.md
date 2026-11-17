@@ -34,13 +34,25 @@ Press R1 with the stick resting to arm. *Controls → Throttle* also offers "mid
 (axes 0–3) with CH5 as the arm switch. Open *Controls* to run *Calibrate sticks*, use *Detect* to remap a
 channel, and *Bind* to put reset, angle mode or the chase camera on a switch.
 
+## Maps
+
+- **Industrial bando** (default) – a freestyle spot on a flat industrial lot ringed by rolling, wooded hills:
+  an abandoned factory (windows, big doors, a skylight gap with trusses, columns, a mezzanine), a three-deck open
+  parking structure with a lightwell, a water tower with cross-braced legs, a 38 m brick chimney, a container yard
+  with a gap and a leaning container, power lines with solid sagging cables, a billboard, a bus, barriers and trees.
+- **Practice field** – the open field from the first version.
+
+Pick the map in *Esc → General*. All geometry is built in code (`src/world/maps/`); meshes sharing a material
+are merged into one draw call, and every solid piece has a matching collider (boxes with any rotation,
+vertical cylinders, and a heightfield for the hills).
+
 ## Setup screens (Esc)
 
 - **Controls** – live stick view, mapping with Detect, a two-step calibration wizard, deadzone, throttle curve
   (spring stick: middle = 0% or 50%, or full-travel radio; mid point, expo, live curve and hover line), switch/button bindings, raw input.
 - **Rates** – Betaflight or Actual rates, presets, per-axis values and a curve preview with live stick dots.
 - **Camera** – uptilt and FOV with presets; the panel docks to the side so you see the FPV view change.
-- **General** – flight mode, keyboard strength, copy / paste / download / load / reset settings.
+- **General** – map, flight mode, keyboard strength, copy / paste / download / load / reset settings.
 
 ## How it works
 
@@ -59,7 +71,7 @@ input (Gamepad API / keyboard, calibration, deadzones)
 - `src/fc/` – Betaflight rate formula, PID with Betaflight scale factors, I-term relax, D on measurement,
   feedforward, airmode with a 25% start threshold, and an optional angle mode.
 - `src/input/` – controller presets, calibration math and keyboard flying.
-- `src/world/field.ts` – the practice field built from simple shapes, each with a matching collider.
+- `src/world/` – level builder, environment (sky, light, procedural textures) and the maps.
 
 Hitting something faster than 7 m/s counts as a crash and disarms the quad.
 

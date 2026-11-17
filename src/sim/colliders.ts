@@ -1,4 +1,4 @@
-import { Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 
 /** Result of a sphere-vs-shape test. `normal` points out of the shape, toward the sphere. */
 export interface Contact {
@@ -26,36 +26,25 @@ export class GroundCollider implements Collider {
   }
 }
 
-/** Box rotated about the vertical axis only. `center` is the box center, `size` full extents. */
+/** Oriented box. `center` is the box center, `size` full extents, `rotation` a yaw angle or a full quaternion. */
 export class BoxCollider implements Collider {
   readonly boundCenter: Vector3;
   readonly boundRadius: number;
   private readonly half: Vector3;
-  private readonly cos: number;
-  private readonly sin: number;
+  private readonly rot: Quaternion;
+  private readonly invRot: Quaternion;
 
-  constructor(center: Vector3, size: Vector3, yaw = 0) {
+  constructor(center: Vector3, size: Vector3, rotation: number | Quaternion = 0) {
     this.boundCenter = center.clone();
     this.half = size.clone().multiplyScalar(0.5);
     this.boundRadius = this.half.length();
-    this.cos = Math.cos(yaw);
-    this.sin = Math.sin(yaw);
-  }
-
-  /** World -> local (undo yaw rotation about +y). */
-  private toLocal(p: Vector3): Vector3 {
-    const dx = p.x - this.boundCenter.x;
-    const dz = p.z - this.boundCenter.z;
-    // three.js rotation about +y by yaw: x' = x cos + z sin, z' = -x sin + z cos. Inverse:
-    return new Vector3(dx * this.cos - dz * this.sin, p.y - this.boundCenter.y, dx * this.sin + dz * this.cos);
-  }
-
-  private toWorldDir(v: Vector3): Vector3 {
-    return new Vector3(v.x * this.cos + v.z * this.sin, v.y, -v.x * this.sin + v.z * this.cos);
+    this.rot =
+      typeof rotation === 'number' ? new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rotation) : rotation.clone();
+    this.invRot = this.rot.clone().invert();
   }
 
   test(p: Vector3, r: number): Contact | null {
-    const l = this.toLocal(p);
+    const l = p.clone().sub(this.boundCenter).applyQuaternion(this.invRot);
     const h = this.half;
     const cx = Math.max(-h.x, Math.min(h.x, l.x));
     const cy = Math.max(-h.y, Math.min(h.y, l.y));
@@ -67,7 +56,7 @@ export class BoxCollider implements Collider {
     if (d2 > 1e-12) {
       if (d2 >= r * r) return null;
       const d = Math.sqrt(d2);
-      return { normal: this.toWorldDir(new Vector3(dx / d, dy / d, dz / d)), depth: r - d };
+      return { normal: new Vector3(dx / d, dy / d, dz / d).applyQuaternion(this.rot), depth: r - d };
     }
     // Center inside the box: push out through the nearest face.
     const px = h.x - Math.abs(l.x);
@@ -85,7 +74,29 @@ export class BoxCollider implements Collider {
       n.set(0, 0, Math.sign(l.z) || 1);
       depth = pz + r;
     }
-    return { normal: this.toWorldDir(n), depth };
+    return { normal: n.applyQuaternion(this.rot), depth };
+  }
+}
+
+/** Smooth terrain given by a height function y = height(x, z). Suited to gentle slopes. */
+export class HeightfieldCollider implements Collider {
+  readonly boundCenter = new Vector3();
+  readonly boundRadius = Infinity;
+  constructor(private readonly height: (x: number, z: number) => number) {}
+
+  test(p: Vector3, r: number): Contact | null {
+    const h = this.height(p.x, p.z);
+    const above = p.y - h;
+    if (above > r * 2) return null; // quick reject, slopes are gentle
+    const e = 0.05;
+    const n = new Vector3(
+      this.height(p.x - e, p.z) - this.height(p.x + e, p.z),
+      2 * e,
+      this.height(p.x, p.z - e) - this.height(p.x, p.z + e),
+    ).normalize();
+    const dist = above * n.y; // distance to the local tangent plane
+    if (dist >= r) return null;
+    return { normal: n, depth: r - dist };
   }
 }
 
