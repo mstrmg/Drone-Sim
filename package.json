@@ -1,0 +1,23 @@
+{
+  "name": "drone-sim",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Browser FPV freestyle drone simulator with sim-grade quad physics",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.8",
+    "vitest": "^4.1.12"
+  }
+}
