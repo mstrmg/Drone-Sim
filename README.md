@@ -40,7 +40,7 @@ channel, and *Bind* to put reset, angle mode or the chase camera on a switch.
   (spring-centered toggle, mid point, expo, with a live curve and the hover line), switch/button bindings, raw input.
 - **Rates** – Betaflight or Actual rates, presets, per-axis values and a curve preview with live stick dots.
 - **Camera** – uptilt and FOV with presets; the panel docks to the side so you see the FPV view change.
-- **General** – flight mode, keyboard strength, export / import / reset settings.
+- **General** – flight mode, keyboard strength, copy / paste / download / load / reset settings.
 
 ## How it works
 

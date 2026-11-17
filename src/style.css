@@ -101,3 +101,6 @@ label.check { display: flex; gap: 8px; align-items: center; }
 .menu button.danger { background: #b3261e; border-color: #b3261e; color: #fff; }
 .settings-msg { color: #9fe0a0; min-height: 1em; }
 .rate-curve { max-width: 560px; }
+.settings-json { width: 100%; margin-top: 8px; background: #111317; color: #e9ecf1; border: 1px solid var(--line); border-radius: 6px;
+  padding: 8px; font: 12px/1.4 ui-monospace, monospace; resize: vertical; }
+.settings-json:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

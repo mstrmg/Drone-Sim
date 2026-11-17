@@ -690,12 +690,17 @@ export class Menu {
       Angle mode levels the quad for you and is easier with a keyboard.</p>
       <div class="row"><label>Keyboard stick strength <input type="range" min="0.2" max="1" step="0.05" class="kb"></label><span class="kb-v"></span></div>
       <h2>Settings</h2>
-      <p class="muted small">Settings are saved in this browser. Export them to keep a backup or move them to another computer.</p>
+      <p class="muted small">Settings are saved in this browser. Copy them to keep a backup or move them to another computer,
+      then paste them back here (or load a saved .json file) to restore them.</p>
       <div class="row">
-        <button class="export">Export settings</button>
-        <label class="file-btn"><input type="file" accept="application/json,.json" class="import"> Import settings</label>
+        <button class="copy-settings primary">Copy settings</button>
+        <button class="export">Download file</button>
+        <button class="paste-settings">Load from text box</button>
+        <label class="file-btn"><input type="file" accept="application/json,.json" class="import"> Load file</label>
         <button class="reset-all">Reset everything</button>
       </div>
+      <textarea class="settings-json" rows="6" spellcheck="false" aria-label="Settings as text"
+        placeholder="Copied settings appear here. Paste settings here and press Load from text box."></textarea>
       <p class="settings-msg small" role="status"></p>`;
     const mode = wrap.querySelector<HTMLSelectElement>('.mode')!;
     mode.value = s.flightMode;
@@ -705,25 +710,55 @@ export class Menu {
     });
     this.slider(wrap, '.kb', '.kb-v', () => s.keyboardStick, (v) => (s.keyboardStick = v), pct);
     const msg = wrap.querySelector<HTMLElement>('.settings-msg')!;
+    const box = wrap.querySelector<HTMLTextAreaElement>('.settings-json')!;
+    const json = () => JSON.stringify(s, null, 2);
+    // Copy works everywhere a click is allowed, including embedded viewers that block file downloads.
+    wrap.querySelector('.copy-settings')!.addEventListener('click', async () => {
+      box.value = json();
+      try {
+        await navigator.clipboard.writeText(box.value);
+        msg.textContent = 'Settings copied to the clipboard.';
+      } catch {
+        box.focus();
+        box.select();
+        msg.textContent = 'Could not reach the clipboard. The settings are selected in the box below: copy them from there.';
+      }
+    });
     wrap.querySelector('.export')!.addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'fpv-sim-settings.json';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      box.value = json();
+      try {
+        const blob = new Blob([box.value], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'fpv-sim-settings.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        msg.textContent = 'If no file was saved, copy the settings from the box below instead.';
+      } catch {
+        msg.textContent = 'Downloads are blocked here. Copy the settings from the box below instead.';
+      }
+    });
+    const load = (text: string, what: string) => {
+      try {
+        replaceSettings(s, parseSettings(JSON.parse(text)));
+        this.commit();
+        this.render();
+        this.body.querySelector('.settings-msg')!.textContent = `Settings loaded from ${what}.`;
+      } catch {
+        msg.textContent = `That ${what} could not be read as FPV Sim settings.`;
+      }
+    };
+    wrap.querySelector('.paste-settings')!.addEventListener('click', () => {
+      if (!box.value.trim()) {
+        msg.textContent = 'Paste your settings into the box below first.';
+        box.focus();
+        return;
+      }
+      load(box.value, 'the text box');
     });
     wrap.querySelector<HTMLInputElement>('.import')!.addEventListener('change', async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        replaceSettings(s, parseSettings(JSON.parse(await file.text())));
-        this.commit();
-        this.render();
-        this.body.querySelector('.settings-msg')!.textContent = 'Settings imported.';
-      } catch {
-        msg.textContent = 'That file could not be read as FPV Sim settings.';
-      }
+      if (file) load(await file.text(), 'file');
     });
     const resetBtn = wrap.querySelector<HTMLButtonElement>('.reset-all')!;
     let armedReset = false;
