@@ -48,6 +48,8 @@ const ANGLE_LIMIT_DEG = 55;
 const ANGLE_STRENGTH = 8; // deg/s of correction per degree of error
 const AXES = ['roll', 'pitch', 'yaw'] as const;
 const TMP_UP = new Vector3();
+/** Reverse-spin ceiling: enough to tip the quad over without launching it. */
+const TURTLE_MAX = 0.65;
 type Axis = (typeof AXES)[number];
 
 /** Rate-mode PID loop + Quad-X mixer with airmode, modelled on Betaflight. */
@@ -197,13 +199,13 @@ export class FlightController {
     let power = 1;
     if (attitude) {
       const upY = TMP_UP.set(0, 1, 0).applyQuaternion(attitude).y;
-      // Full power while inverted, none once the quad is past ~80° toward upright.
-      power = Math.max(0, Math.min(1, (0.15 - upY) / 0.45));
+      // Full power while inverted, fading out before the quad reaches its side; momentum carries it over.
+      power = Math.max(0, Math.min(1, (-0.2 - upY) / 0.45));
     }
     for (let i = 0; i < 4; i++) {
       const m = MOTOR_LAYOUT[i];
       // Reversed thrust on the right motors rolls the quad right (same torque as forward thrust on the left).
-      this.motorOut[i] = power * Math.max(0, Math.min(1, m.x * roll - m.z * pitch));
+      this.motorOut[i] = TURTLE_MAX * power * Math.max(0, Math.min(1, m.x * roll - m.z * pitch));
     }
     return this.motorOut;
   }

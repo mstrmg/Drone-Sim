@@ -98,10 +98,10 @@ describe('prop wash', () => {
 });
 
 describe('prop damage', () => {
-  const drop = (speed: number) => {
+  const drop = (speed: number, height = 0.3) => {
     const q = new Quad(FREESTYLE_5IN);
     q.realism = { ...ALL_OFF, damage: true };
-    q.reset(new Vector3(0, 0.3, 0));
+    q.reset(new Vector3(0, height, 0));
     // Rolled 35° so a motor arm hits first.
     q.orientation.setFromAxisAngle(new Vector3(0, 0, 1), 0.6);
     q.velocity.set(0, -speed, 0);
@@ -111,7 +111,8 @@ describe('prop damage', () => {
   };
 
   it('a gentle touchdown does no damage', () => {
-    expect(drop(1.5).every((h) => h === 1)).toBe(true);
+    // Starts just above the ground so it lands at about 2 m/s.
+    expect(drop(1.5, 0.1).every((h) => h === 1)).toBe(true);
   });
 
   it('a hard hit damages the props that hit', () => {
@@ -134,7 +135,7 @@ describe('turtle mode', () => {
     for (let i = 0; i < 1500; i++) {
       const up = new Vector3(0, 1, 0).applyQuaternion(q.orientation);
       // Like a pilot: let go of the stick once it is nearly upright.
-      const out = up.y < 0.75 ? fc.turtleMix({ ...sticks, yaw: 0, throttle: 0 }) : [0, 0, 0, 0];
+      const out = up.y < 0.75 ? fc.turtleMix({ ...sticks, yaw: 0, throttle: 0 }, q.orientation) : [0, 0, 0, 0];
       q.step(DT, out, ground);
       const g = q.gyroDegPerSec();
       rollDeg += g.roll * DT;
