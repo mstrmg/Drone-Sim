@@ -46,13 +46,16 @@ channel, and *Bind* to put reset, angle mode or the chase camera on a switch.
     gallery you can fly through, a pipe rack with two tiers, a water tower and a 38 m chimney;
   - a container yard with a gap and a container tunnel, a rail yard with freight cars (one open gondola to dive
     into, one derailed), a highway overpass with wall piers and a sign gantry, culvert pipes to fly through,
-    power lines with solid cables, and graffiti.
+    power lines with solid cables, and graffiti;
+  - a five-storey concrete ruin east of the lot with a dive shaft cut through every floor, a stair core, a slab
+    fallen against its side and an antenna on the roof.
 - **Practice field** – the open field from the first version.
 
 Pick the map in *Esc → General*. All geometry and textures are generated in code (`src/world/`), so the build stays
 one file with nothing to download. Meshes sharing a material are merged into one draw call, grass and rocks are
 instanced, and every solid piece has a matching collider (boxes with any rotation, vertical cylinders, and a
-heightfield for the hills). A grid over the ground hands the physics only the colliders near the quad. The sky,
+heightfield for the hills). The ground is one continuous surface that blends grass, asphalt, gravel and dirt by
+a painted mask (with puddles on the asphalt), so there are no stacked layers to flicker. A grid over the ground hands the physics only the colliders near the quad. The sky,
 clouds, fog and image-based lighting come from one sky shader, and the sun's 4096 px shadow map follows the quad.
 
 ## Setup screens (Esc)

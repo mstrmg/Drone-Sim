@@ -349,3 +349,53 @@ export function blobTexture(): THREE.CanvasTexture {
     1,
   );
 }
+
+/** Packed brown soil with pebbles and tyre ruts. One tile is 6 m. */
+export function dirtTexture(): THREE.CanvasTexture {
+  return canvasTexture(
+    512,
+    512,
+    (g, rnd, w, h) => {
+      g.fillStyle = '#7b6448';
+      g.fillRect(0, 0, w, h);
+      blotches(g, rnd, w, h, 70, 'rgba(95,75,52,0.35)', 15, 70);
+      blotches(g, rnd, w, h, 50, 'rgba(140,118,88,0.25)', 10, 50);
+      speckle(g, rnd, w, h, 40000, [118, 98, 72], 50, 0.5, 2);
+      for (let i = 0; i < 900; i++) {
+        const v = 120 + rnd() * 70;
+        g.fillStyle = `rgba(${v},${v - 8},${v - 20},0.8)`;
+        g.beginPath();
+        g.ellipse(rnd() * w, rnd() * h, 1 + rnd() * 3, 1 + rnd() * 2.5, rnd() * 3, 0, Math.PI * 2);
+        g.fill();
+      }
+      blotches(g, rnd, w, h, 40, 'rgba(85,110,50,0.18)', 4, 16); // sparse weeds
+    },
+    61,
+  );
+}
+
+/** Railway ballast and loose gravel: packed grey-brown stones. One tile is 3 m. */
+export function gravelTexture(): THREE.CanvasTexture {
+  return canvasTexture(
+    512,
+    512,
+    (g, rnd, w, h) => {
+      g.fillStyle = '#6b665e';
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 7000; i++) {
+        const v = 80 + rnd() * 90;
+        const warm = rnd() * 18;
+        g.fillStyle = `rgb(${v + warm},${v + warm * 0.5},${v - 4})`;
+        g.beginPath();
+        const r = 2 + rnd() * 5;
+        g.ellipse(rnd() * w, rnd() * h, r, r * (0.6 + rnd() * 0.4), rnd() * 3, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = 'rgba(30,28,25,0.35)';
+        g.lineWidth = 1;
+        g.stroke();
+      }
+      blotches(g, rnd, w, h, 30, 'rgba(70,55,40,0.2)', 10, 40); // rust and oil
+    },
+    71,
+  );
+}

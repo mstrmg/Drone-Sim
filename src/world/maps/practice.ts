@@ -11,9 +11,9 @@ export function buildPracticeField(maxAnisotropy: number): Field {
   group.add(groundMesh(mowedGrassTexture(), maxAnisotropy, 16));
   const sunDir = new THREE.Vector3(0.5, 0.7, 0.35).normalize();
   const sky = makeSky({ sunDir, cloudCover: 0.35 });
-  const pad = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ color: 0x5a5c62, roughness: 0.95 }));
-  pad.rotation.x = -Math.PI / 2;
-  pad.position.y = 0.005;
+  // A slab with real thickness rather than a plane lying on the grass, so the two surfaces never fight.
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(3, 0.04, 3), new THREE.MeshStandardMaterial({ color: 0x5a5c62, roughness: 0.95 }));
+  pad.position.y = 0.02;
   pad.receiveShadow = true;
   group.add(pad, sky.mesh);
   const sun = addLights(group, sunDir);

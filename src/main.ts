@@ -62,7 +62,7 @@ function loadMap(id: MapId): void {
 }
 loadMap(settings.map);
 
-const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.02, 3000);
+const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.03, 1500);
 
 const quad = new Quad(FREESTYLE_5IN);
 const model = new QuadModel(FREESTYLE_5IN);

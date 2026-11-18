@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { CylinderCollider, HeightfieldCollider } from '../../sim/colliders';
 import { Builder } from '../builder';
-import { addLights, decal, groundMesh, makeSky, type Field } from '../env';
+import { addLights, makeSky, splatGround, type Field } from '../env';
 import { industrialMaterials, type IndustrialMaterials } from '../materials';
 import { fbm2, seededRandom, smoothstep } from '../rand';
-import { GRAFFITI_CELLS, graffitiAtlas, grassTexture, tuftTexture } from '../textures';
+import { dirtTexture, GRAFFITI_CELLS, graffitiAtlas, grassTexture, gravelTexture, tuftTexture } from '../textures';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const Q = (x: number, y: number, z: number) => new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z));
@@ -93,14 +93,14 @@ export function buildBando(maxAnisotropy: number): Field {
   });
 
   b.colliders.push(new HeightfieldCollider(bandoTerrain));
-  group.add(ground(maxAnisotropy));
-  surfaces(group, m);
+  group.add(ground(m, maxAnisotropy));
 
   factory(b, m);
   warehouse(b, m);
   skybridge(b, m);
   parkingStructure(b, m);
   towerCrane(b, m, 38, -70);
+  ruin(b, m);
   silos(b, m);
   pipeRack(b, m);
   waterTower(b, m, -58, -12);
@@ -163,12 +163,6 @@ const PATHS: [number, number][][] = [
   ],
 ];
 
-function pathDistance(x: number, z: number): number {
-  let d = Infinity;
-  for (const p of PATHS) for (let i = 0; i < p.length - 1; i++) d = Math.min(d, distToSegment(x, z, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]));
-  return d;
-}
-
 function lotDistance(x: number, z: number): number {
   const dx = Math.max(LOT_RECT.x0 - x, 0, x - LOT_RECT.x1);
   const dz = Math.max(LOT_RECT.z0 - z, 0, z - LOT_RECT.z1);
@@ -178,39 +172,87 @@ function lotDistance(x: number, z: number): number {
 const mix3 = (a: number[], c: number[], t: number): [number, number, number] => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, a[2] + (c[2] - a[2]) * t];
 const DRY = [1.28, 1.08, 0.78];
 const LUSH = [0.72, 0.88, 0.7];
-const DIRT = [1.3, 0.8, 1.15];
 const ROCK = [1.25, 1.0, 1.65];
 
-/** Vertex tint multiplied over the grass texture: dry and lush patches, worn dirt and rocky slopes. */
+/** Vertex tint multiplied over the grass: dry and lush patches and rocky slopes. */
 function groundTint(x: number, z: number, _y: number, slope: number): [number, number, number] {
   let c = mix3([1, 1, 1], DRY, smoothstep(0.45, 0.72, fbm2(x * 0.018, z * 0.018)));
   c = mix3(c, LUSH, 0.6 * smoothstep(0.55, 0.8, fbm2(x * 0.045 + 7, z * 0.045 - 3)));
-  const edge = smoothstep(9, 0, lotDistance(x, z)) * (0.6 + 0.4 * fbm2(x * 0.3, z * 0.3));
-  const path = smoothstep(3.2, 1.0, pathDistance(x, z) + (fbm2(x * 0.2, z * 0.2) - 0.5) * 2);
-  const patch = 0.8 * smoothstep(0.7, 0.8, fbm2(x * 0.035 + 11, z * 0.035 + 5));
-  const rail = smoothstep(7, 3, Math.abs(x - (RAIL_X + SIDING_X) / 2)) * (z > -132 && z < 48 ? 1 : 0);
-  c = mix3(c, DIRT, Math.min(1, Math.max(edge, path, patch, rail * 0.8)));
   return mix3(c, ROCK, smoothstep(0.03, 0.09, slope));
 }
 
-function ground(maxAnisotropy: number): THREE.Mesh {
-  return groundMesh(grassTexture(), maxAnisotropy, 10, 2000, bandoTerrain, 200, groundTint);
+/** Paved areas besides the main lot: the road under the overpass, its access road and the ruin's pad. */
+const PAVED: { x0: number; x1: number; z0: number; z1: number }[] = [
+  { x0: -95, x1: 95, z0: OVERPASS_Z - 6, z1: OVERPASS_Z + 6 },
+  { x0: -5, x1: 5, z0: 40, z1: OVERPASS_Z },
+  { x0: 88, x1: 132, z0: -70, z1: -30 },
+];
+
+function insideRect(x: number, z: number, r: { x0: number; x1: number; z0: number; z1: number }): number {
+  return Math.min(x - r.x0, r.x1 - x, z - r.z0, r.z1 - z);
 }
 
-/** Asphalt, road and ballast surfaces lying on the ground. */
-function surfaces(group: THREE.Group, m: M): void {
-  const lot = decal(m.road.map!, LOT_RECT.x1 - LOT_RECT.x0, LOT_RECT.z1 - LOT_RECT.z0, (LOT_RECT.x0 + LOT_RECT.x1) / 2, (LOT_RECT.z0 + LOT_RECT.z1) / 2, 20);
-  const road = decal(m.road.map!, 180, 12, 0, OVERPASS_Z, 20, 0.012);
-  const access = decal(m.road.map!, 10, 20, 0, 55, 20, 0.011);
-  group.add(lot, road, access);
-  for (const [x, w] of [
-    [RAIL_X, 4.6],
-    [SIDING_X, 4.2],
-  ]) {
-    const ballast = decal(m.concreteDark.map!, w, 172, x, -42, 3, 0.02, 0, 1);
-    (ballast.material as THREE.MeshStandardMaterial).color.set(0x8d8478);
-    group.add(ballast);
+const PATH_SEGMENTS = PATHS.flatMap((p) => p.slice(1).map((q, i) => [p[i][0], p[i][1], q[0], q[1]]));
+const PATH_REACH = 5;
+
+/** Distance to the nearest path, or Infinity when further than PATH_REACH (cheap box test first). */
+function nearPathDistance(x: number, z: number): number {
+  let d = Infinity;
+  for (const [ax, az, bx, bz] of PATH_SEGMENTS) {
+    if (x < Math.min(ax, bx) - PATH_REACH || x > Math.max(ax, bx) + PATH_REACH || z < Math.min(az, bz) - PATH_REACH || z > Math.max(az, bz) + PATH_REACH) continue;
+    d = Math.min(d, distToSegment(x, z, ax, az, bx, bz));
   }
+  return d;
+}
+
+/** Splat weights: [asphalt, gravel, dirt, wetness]. Called about a million times at load, so it skips work it can. */
+export function surfaceWeights(x: number, z: number): [number, number, number, number] {
+  let inside = insideRect(x, z, LOT_RECT);
+  for (const r of PAVED) inside = Math.max(inside, insideRect(x, z, r));
+  let asphalt = 0;
+  let crumble = 0;
+  if (inside > -2.5) {
+    // Broken edges, and a few spots where the asphalt has crumbled back to dirt.
+    crumble = smoothstep(0.74, 0.82, fbm2(x * 0.05 + 40, z * 0.05 - 17, 3));
+    const edge = inside > 2.5 ? 1 : Math.min(1, Math.max(0, 0.5 + (inside + (fbm2(x * 0.15, z * 0.15, 2) - 0.5) * 3) * 0.8));
+    asphalt = edge * (1 - crumble);
+  }
+
+  let gravel = 0;
+  const railD = Math.abs(x - (RAIL_X + SIDING_X) / 2);
+  if (z > -134 && z < 50 && railD < 7) {
+    gravel = Math.min(1, Math.max(0, 0.5 - (railD - 4.4 + (fbm2(x * 0.15, z * 0.15, 2) - 0.5) * 1.5)));
+  }
+
+  let dirt = crumble;
+  const lotD = lotDistance(x, z);
+  if (lotD > 0 && lotD < 12) dirt = Math.max(dirt, smoothstep(10, 1, lotD) * (0.55 + 0.45 * fbm2(x * 0.3, z * 0.3, 2)));
+  const pd = nearPathDistance(x, z);
+  if (pd < PATH_REACH) dirt = Math.max(dirt, smoothstep(3.4, 1.2, pd + (fbm2(x * 0.2, z * 0.2, 2) - 0.5) * 2));
+  if (asphalt < 0.99) dirt = Math.max(dirt, 0.9 * smoothstep(0.72, 0.8, fbm2(x * 0.035 + 11, z * 0.035 + 5, 3)));
+  if (gravel > 0) dirt = Math.max(dirt, 0.7 * smoothstep(7, 4, railD));
+
+  const wet = asphalt > 0.5 ? smoothstep(0.66, 0.73, fbm2(x * 0.09 + 20, z * 0.09 - 9, 3)) : 0;
+  return [asphalt, gravel, dirt, wet];
+}
+
+/** One ground surface for the whole map: grass, asphalt, gravel and dirt blended in the same triangles. */
+function ground(m: M, maxAnisotropy: number): THREE.Mesh {
+  return splatGround({
+    size: 2000,
+    segments: 220,
+    height: bandoTerrain,
+    tint: groundTint,
+    base: { map: grassTexture(), tile: 10 },
+    layers: [
+      { map: m.road.map!, tile: 20 },
+      { map: gravelTexture(), tile: 3 },
+      { map: dirtTexture(), tile: 6 },
+    ],
+    mask: { x0: -300, z0: -330, size: 600, res: 1024 },
+    weights: surfaceWeights,
+    maxAnisotropy,
+  });
 }
 
 // ---------------------------------------------------------------- Buildings
@@ -246,7 +288,7 @@ function factory(b: Builder, m: M): void {
   b.box(0, H + 0.15, (-47 + z1) / 2, 44.4, 0.3, 9, m.sheetRust);
   b.box(0, H + 0.5, z1, 44.4, 1, 0.45, m.concrete);
   b.box(0, H + 0.5, z0, 44.4, 1, 0.45, m.concrete);
-  for (const x of [x0, x1]) for (const [za, zb] of [[z0, -53], [-47, z1]]) b.box(x, H + 0.5, (za + zb) / 2, 0.45, 1, zb - za, m.concrete);
+  for (const x of [x0, x1]) for (const [za, zb] of [[z0, -53], [-47, z1]]) b.box(x, H + 0.49, (za + zb) / 2, 0.45, 0.98, zb - za, m.concrete); // a touch lower than the long parapets so the corners don't fight
   for (let x = -18; x <= 18; x += 6) {
     b.beam(V(x, H - 0.4, -53.2), V(x, H - 0.4, -46.8), 0.25, 0.45, m.steel);
     b.beam(V(x, H - 0.75, -50), V(x, H - 0.1, -53.1), 0.1, 0.1, m.steel); // truss diagonals
@@ -276,7 +318,7 @@ function factory(b: Builder, m: M): void {
 
   // Interior columns, a mezzanine with railing, a catwalk under the north roof and an overhead crane beam.
   for (const cx of [-11, 0, 11]) for (const cz of [-46, -54]) b.block(cx, cz, 0.6, H, 0.6, m.concreteDark);
-  b.box(-14, 5.15, -56, 16, 0.3, 12, m.concrete);
+  b.box(-13.9, 5.15, -56, 15.8, 0.3, 12, m.concrete); // starts at the wall's inner face
   b.beam(V(-6, 6.1, -62), V(-6, 6.1, -50), 0.08, 0.08, m.steel);
   b.beam(V(-22, 6.1, -50), V(-6, 6.1, -50), 0.08, 0.08, m.steel);
   for (let x = -20; x <= -6; x += 3.5) b.box(x, 5.7, -50, 0.06, 0.9, 0.06, m.steel);
@@ -353,8 +395,9 @@ function warehouse(b: Builder, m: M): void {
   const y = H + 0.1;
   b.box((x0 + x1) / 2, y, (z0 + hole.z0) / 2, x1 - x0 + 0.4, 0.2, hole.z0 - z0 + 0.2, m.sheetGrey);
   b.box((x0 + x1) / 2, y, (hole.z1 + z1) / 2, x1 - x0 + 0.4, 0.2, z1 - hole.z1 + 0.2, m.sheetGrey);
-  b.box((x0 + hole.x0) / 2, y, (hole.z0 + hole.z1) / 2, hole.x0 - x0 + 0.2, 0.2, hole.z1 - hole.z0, m.sheetGrey);
-  b.box((hole.x1 + x1) / 2, y, (hole.z0 + hole.z1) / 2, x1 - hole.x1 + 0.2, 0.2, hole.z1 - hole.z0, m.sheetGrey);
+  // Side pieces start where the strips' overhang ends, so no two roof faces overlap.
+  b.box((x0 + hole.x0) / 2, y, (hole.z0 + hole.z1) / 2, hole.x0 - x0 + 0.2, 0.2, hole.z1 - hole.z0 - 0.2, m.sheetGrey);
+  b.box((hole.x1 + x1) / 2, y, (hole.z0 + hole.z1) / 2, x1 - hole.x1 + 0.2, 0.2, hole.z1 - hole.z0 - 0.2, m.sheetGrey);
   b.box(-53, 4.2, -59, 6, 0.15, 6.4, m.sheetGrey, Q(0.9, 0.3, 0.2));
   for (let x = x0 + 4; x < x1; x += 4.4) b.beam(V(x, H - 0.3, z0), V(x, H - 0.3, z1), 0.2, 0.35, m.darkSteel);
 
@@ -410,7 +453,7 @@ function parkingStructure(b: Builder, m: M): void {
     b.box((hole.x0 + hole.x1) / 2, y + 1, hole.z1 + 0.05, hole.x1 - hole.x0, 0.08, 0.08, m.paintWhite);
   }
   for (const cx of [50.4, 57.5, 72.5, 79.6]) {
-    for (const cz of [-51.6, -41, -30, -19, -8.4]) b.block(cx, cz, 0.5, 9.6, 0.5, m.concreteDark);
+    for (const cz of [-51.6, -41, -30, -19, -8.4]) b.block(cx, cz, 0.5, 9.55, 0.5, m.concreteDark); // tops stay inside the roof slab
   }
   b.block(83, -10, 5, 12.5, 5, m.concreteWarm);
   b.box(65, 1.6, -7.9, 3, 0.8, 0.05, m.tarp, 0, false);
@@ -485,6 +528,82 @@ function towerCrane(b: Builder, m: M, cx: number, cz: number): void {
   b.beam(V(cx, 14.6, tz), V(cx, 13.6, tz - 2.5), 0.03, 0.03, m.cable, false);
   b.beam(V(cx, 14.6, tz), V(cx, 13.6, tz + 2.5), 0.03, 0.03, m.cable, false);
   b.box(cx, 13.2, tz, 1.2, 0.8, 7, m.rust, 0.6);
+}
+
+/**
+ * Five-storey concrete ruin east of the lot: an exposed frame with a dive shaft cut through every floor, a stair
+ * core, a windowed north wall, brick infill low on the west side, a slab fallen against the east side and an
+ * antenna on the roof.
+ */
+function ruin(b: Builder, m: M): void {
+  const x0 = 100;
+  const x1 = 124;
+  const z0 = -62;
+  const z1 = -38;
+  const F = 3.6;
+  const floors = 5;
+  const th = 0.3;
+  const shaft = { x0: 106.5, x1: 111.5, z0: -49.5, z1: -44.5 };
+  const cols = [0, 1, 2, 3, 4].map((i) => x0 + 0.25 + i * 5.875);
+  const colsZ = [0, 1, 2, 3, 4].map((i) => z0 + 0.25 + i * 5.875);
+  b.block((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0 + 1, 0.3, z1 - z0 + 1, m.concreteDark); // ground slab
+  for (let k = 1; k <= floors; k++) {
+    const y = k * F - th / 2;
+    const h = shaft;
+    const mat = k === floors ? m.concreteDark : m.concrete;
+    b.box((x0 + x1) / 2, y, (z0 + h.z0) / 2, x1 - x0, th, h.z0 - z0, mat);
+    b.box((x0 + x1) / 2, y, (h.z1 + z1) / 2, x1 - x0, th, z1 - h.z1, mat);
+    b.box((x0 + h.x0) / 2, y, (h.z0 + h.z1) / 2, h.x0 - x0, th, h.z1 - h.z0, mat);
+    b.box((h.x1 + x1) / 2, y, (h.z0 + h.z1) / 2, x1 - h.x1, th, h.z1 - h.z0, mat);
+    // Bent rebar sticking out of the shaft edges.
+    for (let i = 0; i < 6; i++) {
+      const t = (i + 0.5) / 6;
+      b.box(h.x0 + t * (h.x1 - h.x0), y, h.z0 + 0.2, 0.02, 0.02, 0.5, m.rust, Q(0.4, 0, 0), false);
+      b.box(h.x0 + 0.2, y, h.z0 + t * (h.z1 - h.z0), 0.5, 0.02, 0.02, m.rust, Q(0, 0, -0.4), false);
+    }
+  }
+  // Columns stop at the slab undersides, so no faces overlap.
+  for (let k = 0; k < floors; k++) {
+    const base = k === 0 ? 0.3 : k * F;
+    const top = (k + 1) * F - th;
+    for (const cx of cols) for (const cz of colsZ) if (!(k === floors - 1 && cx > 117 && cz < -55)) b.box(cx, (base + top) / 2, cz, 0.5, top - base, 0.5, m.concreteDark);
+  }
+  // North wall with a window per bay on every floor and a parapet on top.
+  const windows: [number, number, number, number][] = [];
+  for (let k = 0; k < floors; k++) for (const a of [1.6, 7.5, 13.4, 19.3]) windows.push([a, a + 3.1, k * F + 0.9, k * F + 2.8]);
+  b.wall(x0, z0, x1, z0, floors * F + 1, 0.3, m.concreteWarm, windows);
+  // Brick infill on the lower west side, with ragged openings.
+  b.wall(x0, z1, x0, z0, 2 * F, 0.3, m.brick, [[2, 5.5, 0.8, 2.9], [8, 13, 0, 3.0], [15.5, 19, 4.4, 6.5], [20.5, 23, 0.8, 6.2]]);
+  // Stair core in the north-east corner, open on its west face.
+  const cx0 = 118.3;
+  const cx1 = 123.7;
+  const cz0 = -61.7;
+  const cz1 = -56.3;
+  b.box((cx0 + cx1) / 2, (floors * F + 2) / 2, cz1, cx1 - cx0, floors * F + 2, 0.25, m.concrete);
+  b.box(cx1, (floors * F + 2) / 2, (cz0 + cz1) / 2, 0.25, floors * F + 2, cz1 - cz0 - 0.25, m.concrete);
+  b.box((cx0 + cx1) / 2, floors * F + 2.1, (cz0 + cz1) / 2, cx1 - cx0, 0.2, cz1 - cz0, m.concreteDark);
+  for (let k = 0; k < floors; k++) b.box(121, k * F + 1.8, -59, 4.5, 0.2, 3, m.concreteDark, Q(Math.atan2(F, 4.5), Math.PI / 2, 0), false);
+  // Roof parapet along the south edge, and an antenna to loop.
+  b.box((x0 + x1) / 2, floors * F + 0.45, z1 - 0.15, x1 - x0, 0.9, 0.3, m.concreteDark);
+  b.cylinder(103, -41, floors * F, floors * F + 12, 0.18, m.steel, 8);
+  b.box(103, floors * F + 9, -41, 3, 0.12, 0.12, m.steel);
+  b.box(103, floors * F + 11, -41, 2, 0.12, 0.12, m.steel);
+  for (const [dx, dz] of [
+    [3, 0],
+    [-3, 0],
+    [0, 3],
+  ])
+    b.beam(V(103, floors * F + 10, -41), V(103 + dx, floors * F, -41 + dz), 0.03, 0.03, m.cable, false);
+  // A slab that fell against the east side: fly through the triangle under it.
+  b.box(x1 + 2.2, 3.2, -50, 0.35, 7.6, 7, m.concrete, Q(0, 0, 0.55));
+  // Rubble around the base.
+  const rnd = seededRandom(303);
+  for (let i = 0; i < 30; i++) {
+    const s = 0.4 + rnd() * 1.1;
+    const x = x1 + 1 + rnd() * 6;
+    const z = -60 + rnd() * 20;
+    b.box(x, s * 0.25, z, s, s * 0.5, s * 0.8, rnd() < 0.3 ? m.brick : m.concreteDark, Q(rnd() * 0.4, rnd() * 3, rnd() * 0.4), s > 1);
+  }
 }
 
 /** Three grain silos on legs with hoppers, a headhouse across their tops and a sloping conveyor gallery. */
@@ -831,6 +950,9 @@ const TAGS: [number, number, number, number, number, number][] = [
   [-49.2, 1.3, -80, -Math.PI / 2, 4, 0],
   [28, 2.2, -81.47, 0, 4, 5],
   [-76, 9, -9.83, 0, 6, 7],
+  [112, 9.05, -62.18, Math.PI, 2.6, 1],
+  [121, 5.4, -56.14, 0, 3.5, 4],
+  [99.83, 1.5, -44.7, -Math.PI / 2, 2, 10],
 ];
 
 function graffitiTags(b: Builder, m: M): void {
@@ -849,6 +971,7 @@ function blocked(x: number, z: number, margin: number): boolean {
   if (Math.abs(z + 150) < 9 + margin) return true; // power line corridor
   if (Math.abs(z - OVERPASS_Z) < 10 + margin && Math.abs(x) < 182) return true;
   if (x > SIDING_X - 6 - margin && x < RAIL_X + 5 + margin && z > -132 && z < 48) return true;
+  for (const r of PAVED) if (insideRect(x, z, r) > -4 - margin) return true;
   return lotDistance(x, z) < 4 + margin;
 }
 
@@ -910,7 +1033,7 @@ function vegetation(group: THREE.Group, b: Builder, maxAnisotropy: number): void
       const dist = Math.pow(rnd(), 0.7) * 300;
       x = LOT.x + Math.cos(ang) * dist;
       z = LOT.z + Math.sin(ang) * dist;
-      if (lotDistance(x, z) < 0.5 || (Math.abs(z - OVERPASS_Z) < 6.5 && Math.abs(x) < 90) || (Math.abs(x) < 5.5 && z > 44 && z < 66)) continue;
+      if (lotDistance(x, z) < 0.5 || PAVED.some((r) => insideRect(x, z, r) > -0.5)) continue;
       if (x > SIDING_X - 2.4 && x < RAIL_X + 2.4 && z > -128 && z < 44) continue;
       scale = 0.6 + rnd() * 0.9;
     }

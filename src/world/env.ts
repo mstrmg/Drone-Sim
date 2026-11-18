@@ -134,7 +134,7 @@ export function makeSky(o: SkyOptions): Sky {
         #include <colorspace_fragment>
       }`,
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(2500, 48, 24), mat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1400, 48, 24), mat);
   mesh.frustumCulled = false;
   mesh.renderOrder = -1;
   return {
@@ -209,14 +209,124 @@ export function groundMesh(
   return mesh;
 }
 
-/** A flat textured patch lying just above the ground (pads, car parks). Visual only. */
-export function decal(tex: THREE.Texture, w: number, d: number, x: number, z: number, tileMeters: number, y = 0.01, yaw = 0, roughness = 0.95): THREE.Mesh {
-  const t = tex.clone();
-  t.needsUpdate = true;
-  t.repeat.set(w / tileMeters, d / tileMeters);
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ map: t, roughness }));
-  mesh.rotation.set(-Math.PI / 2, 0, yaw);
-  mesh.position.set(x, y, z);
+/** A texture layer of the splat ground, repeating every `tile` metres. */
+export interface SplatLayer {
+  map: THREE.Texture;
+  tile: number;
+}
+
+export interface SplatGroundOptions {
+  size: number;
+  segments: number;
+  height: (x: number, z: number) => number;
+  /** Colour multiplier for the base (grass) layer, per vertex. Slope is 1 − normal.y. */
+  tint: (x: number, z: number, y: number, slope: number) => [number, number, number];
+  base: SplatLayer;
+  /** Layers blended over the base by the mask's red, green and blue channels, in that order (last wins). */
+  layers: [SplatLayer, SplatLayer, SplatLayer];
+  /** Mask area and resolution. Outside it only the base layer shows. */
+  mask: { x0: number; z0: number; size: number; res: number };
+  /** Weights in 0..1 for [red layer, green layer, blue layer, wetness] at a point. */
+  weights: (x: number, z: number) => [number, number, number, number];
+  maxAnisotropy: number;
+}
+
+/**
+ * One continuous ground surface that blends several textures (grass, asphalt, gravel, dirt) by a painted mask, with
+ * wet puddles. Everything lies in the same triangles, so there are no stacked layers to flicker against each other.
+ */
+export function splatGround(o: SplatGroundOptions): THREE.Mesh {
+  const geo = new THREE.PlaneGeometry(o.size, o.size, o.segments, o.segments);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, o.height(pos.getX(i), pos.getZ(i)));
+  geo.computeVertexNormals();
+  const nor = geo.attributes.normal;
+  const tints = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) tints.set(o.tint(pos.getX(i), pos.getZ(i), pos.getY(i), 1 - nor.getY(i)), i * 3);
+  geo.setAttribute('groundTint', new THREE.BufferAttribute(tints, 3));
+
+  // Paint the mask into raw bytes (a canvas would premultiply by alpha and lose colour where puddles are). The
+  // border stays empty so the clamped edge shows only the base layer.
+  const res = o.mask.res;
+  const data = new Uint8Array(res * res * 4);
+  const px = o.mask.size / res;
+  for (let j = 1; j < res - 1; j++) {
+    for (let i = 1; i < res - 1; i++) {
+      const w = o.weights(o.mask.x0 + (i + 0.5) * px, o.mask.z0 + (j + 0.5) * px);
+      const k = (j * res + i) * 4;
+      data[k] = w[0] * 255;
+      data[k + 1] = w[1] * 255;
+      data[k + 2] = w[2] * 255;
+      data[k + 3] = w[3] * 255;
+    }
+  }
+  const mask = new THREE.DataTexture(data, res, res, THREE.RGBAFormat);
+  mask.colorSpace = THREE.NoColorSpace;
+  mask.wrapS = mask.wrapT = THREE.ClampToEdgeWrapping;
+  mask.magFilter = THREE.LinearFilter;
+  mask.minFilter = THREE.LinearMipmapLinearFilter;
+  mask.generateMipmaps = true;
+  mask.needsUpdate = true;
+  mask.anisotropy = Math.min(4, o.maxAnisotropy);
+
+  for (const l of [o.base, ...o.layers]) {
+    l.map.wrapS = l.map.wrapT = THREE.RepeatWrapping;
+    l.map.anisotropy = o.maxAnisotropy;
+  }
+  const mat = new THREE.MeshStandardMaterial({ map: o.base.map, roughness: 1 });
+  const uniforms = {
+    splatMask: { value: mask },
+    splatA: { value: o.layers[0].map },
+    splatB: { value: o.layers[1].map },
+    splatC: { value: o.layers[2].map },
+    splatTiles: { value: new THREE.Vector4(o.base.tile, o.layers[0].tile, o.layers[1].tile, o.layers[2].tile) },
+    maskRect: { value: new THREE.Vector3(o.mask.x0, o.mask.z0, o.mask.size) },
+  };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 groundTint;\nvarying vec3 vGroundTint;\nvarying vec2 vWorldXZ;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundTint = groundTint;\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform sampler2D splatMask;
+        uniform sampler2D splatA;
+        uniform sampler2D splatB;
+        uniform sampler2D splatC;
+        uniform vec4 splatTiles;
+        uniform vec3 maskRect;
+        varying vec3 vGroundTint;
+        varying vec2 vWorldXZ;`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `vec4 splat = texture2D(splatMask, (vWorldXZ - maskRect.xy) / maskRect.z);
+        vec2 wp = vWorldXZ;
+        // Two scales of grass, one rotated, so the repeat is hard to spot.
+        vec3 g1 = texture2D(map, wp / splatTiles.x).rgb;
+        vec3 g2 = texture2D(map, mat2(0.8, -0.6, 0.6, 0.8) * wp / (splatTiles.x * 3.7)).rgb;
+        vec3 ground = mix(g1, g2, 0.45) * vGroundTint;
+        // Fine grain from a small-scale sample, so grass still has texture right under the quad.
+        float grain = dot(texture2D(map, wp / (splatTiles.x * 0.17)).rgb, vec3(0.6));
+        ground *= 0.55 + 1.55 * grain;
+        vec3 dirt = texture2D(splatC, wp / splatTiles.w).rgb;
+        vec3 grav = texture2D(splatB, wp / splatTiles.z).rgb;
+        vec3 asph = texture2D(splatA, wp / splatTiles.y).rgb;
+        ground = mix(ground, dirt, smoothstep(0.15, 0.85, splat.b));
+        ground = mix(ground, grav, smoothstep(0.3, 0.7, splat.g));
+        float asphW = smoothstep(0.4, 0.6, splat.r);
+        ground = mix(ground, asph, asphW);
+        float wet = smoothstep(0.35, 0.75, splat.a) * asphW;
+        ground *= mix(1.0, 0.45, wet);
+        diffuseColor.rgb *= ground;`,
+      )
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.07, wet);');
+  };
+  mat.customProgramCacheKey = () => 'splat-ground';
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;
 }
