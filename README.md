@@ -91,3 +91,16 @@ Hitting something faster than 7 m/s counts as a crash and disarms the quad.
 
 `.github/workflows/deploy.yml` publishes `dist/` to GitHub Pages on every push to `main`.
 It needs Pages turned on once: *Settings → Pages → Source: GitHub Actions*.
+
+## Realism (milestone 4)
+
+Toggle in Settings → General → Realism:
+
+- **Prop wash**: dropping into your own wake costs thrust and shakes the quad; forward speed carries you out of it.
+- **Battery sag**: 6S 1300 mAh LiPo model with voltage sag under load and recovery; OSD shows voltage and mAh used.
+- **Crash damage**: hard hits bend or break the props that hit (`damage`), or the classic crash lock / off.
+- **Turtle mode**: flip over after a crash. Select it while disarmed (T key, PS5 Circle, radio CH6), arm, then push a stick toward the way you want to flip.
+
+## Texture credits
+
+Ground and material textures are CC0 PBR sets from [ambientCG](https://ambientcg.com), converted to WebP.

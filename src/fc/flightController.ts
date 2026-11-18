@@ -47,6 +47,7 @@ const AIRMODE_START_THROTTLE = 0.25;
 const ANGLE_LIMIT_DEG = 55;
 const ANGLE_STRENGTH = 8; // deg/s of correction per degree of error
 const AXES = ['roll', 'pitch', 'yaw'] as const;
+const TMP_UP = new Vector3();
 type Axis = (typeof AXES)[number];
 
 /** Rate-mode PID loop + Quad-X mixer with airmode, modelled on Betaflight. */
@@ -175,6 +176,34 @@ export class FlightController {
     }
     for (let i = 0; i < 4; i++) {
       this.motorOut[i] = Math.max(0, Math.min(1, throttle + mix[i]));
+    }
+    return this.motorOut;
+  }
+
+  /**
+   * Turtle mode (Betaflight "flip over after crash"): motors spin in reverse and only the side opposite the flip
+   * runs, so the stick direction is the way the quad rolls or pitches over. Returns reverse-spin commands 0..1.
+   * The stick has expo for fine control, and power fades out as the quad comes past its side (like Betaflight's
+   * attitude-aware crash flip) so gravity finishes the flip instead of the quad launching itself.
+   */
+  turtleMix(sticks: Sticks, attitude?: Quaternion): number[] {
+    const dead = 0.15;
+    const shape = (v: number) => {
+      const a = Math.max(0, (Math.abs(v) - dead) / (1 - dead));
+      return Math.sign(v) * (0.35 * a * a * a + 0.65 * a);
+    };
+    const roll = shape(sticks.roll);
+    const pitch = shape(sticks.pitch);
+    let power = 1;
+    if (attitude) {
+      const upY = TMP_UP.set(0, 1, 0).applyQuaternion(attitude).y;
+      // Full power while inverted, none once the quad is past ~80° toward upright.
+      power = Math.max(0, Math.min(1, (0.15 - upY) / 0.45));
+    }
+    for (let i = 0; i < 4; i++) {
+      const m = MOTOR_LAYOUT[i];
+      // Reversed thrust on the right motors rolls the quad right (same torque as forward thrust on the left).
+      this.motorOut[i] = power * Math.max(0, Math.min(1, m.x * roll - m.z * pitch));
     }
     return this.motorOut;
   }

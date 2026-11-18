@@ -24,11 +24,15 @@ export interface InputFrame {
   modeSwitch: boolean | null;
   cameraToggle: boolean;
   menuToggle: boolean;
+  /** True on the frame a turtle-mode button was pressed. */
+  turtleToggle: boolean;
+  /** Level of the turtle switch when it is a switch binding, otherwise null. */
+  turtleSwitch: boolean | null;
 }
 
 const KEYS_HANDLED = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD',
-  'Space', 'KeyR', 'KeyM', 'KeyC', 'Escape', 'ShiftLeft', 'ShiftRight',
+  'Space', 'KeyR', 'KeyM', 'KeyC', 'KeyT', 'Escape', 'ShiftLeft', 'ShiftRight',
 ]);
 
 /** Reads the active gamepad (or keyboard) once per frame and turns it into sticks and actions. */
@@ -93,6 +97,8 @@ export class InputManager {
       modeSwitch: null,
       cameraToggle: this.consume('KeyC'),
       menuToggle: this.consume('Escape'),
+      turtleToggle: this.consume('KeyT'),
+      turtleSwitch: null,
     };
 
     if (pad && !kbActive) {
@@ -127,12 +133,14 @@ export class InputManager {
       else frame.modeToggle ||= edge('mode', prof.mode);
       frame.reset ||= edge('reset', prof.reset);
       frame.cameraToggle ||= edge('camera', prof.camera);
+      if (prof.turtle?.kind === 'axis') frame.turtleSwitch = bindingActive(prof.turtle, pad);
+      else frame.turtleToggle ||= edge('turtle', prof.turtle);
       // Options / Start button opens the menu on standard-mapping pads.
       if (pad.mapping === 'standard') frame.menuToggle ||= edge('menu', { kind: 'button', index: 9 });
     }
     if (this.suspended) {
-      frame.armToggle = frame.reset = frame.modeToggle = frame.cameraToggle = false;
-      frame.armSwitch = frame.modeSwitch = null;
+      frame.armToggle = frame.reset = frame.modeToggle = frame.cameraToggle = frame.turtleToggle = false;
+      frame.armSwitch = frame.modeSwitch = frame.turtleSwitch = null;
     }
     return frame;
   }

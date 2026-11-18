@@ -20,7 +20,22 @@ export interface Settings {
   keyboardStick: number;
   /** Which map to fly. */
   map: MapId;
+  realism: {
+    /** Thrust loss and wobble when dropping into your own prop wash. */
+    propWash: boolean;
+    /** 6S pack that sags under load and drains over the flight. */
+    battery: boolean;
+    /**
+     * - `damage`: hits damage props (less thrust, vibration, broken props); the quad stays armed, flip it with turtle.
+     * - `classic`: a hard hit (over 7 m/s) disarms and needs a reset.
+     * - `off`: no damage and no crashes.
+     */
+    crashes: CrashMode;
+  };
 }
+
+export type CrashMode = 'damage' | 'classic' | 'off';
+export const CRASH_MODES: CrashMode[] = ['damage', 'classic', 'off'];
 
 export const SETTINGS_KEY = 'fpvsim.settings.v1';
 
@@ -33,6 +48,7 @@ export function defaultSettings(): Settings {
     preferredPad: '',
     keyboardStick: 0.6,
     map: 'bando',
+    realism: { propWash: true, battery: true, crashes: 'damage' },
   };
 }
 
@@ -61,6 +77,11 @@ export function parseSettings(raw: unknown): Settings {
     preferredPad: typeof s.preferredPad === 'string' ? s.preferredPad : '',
     keyboardStick: num(s.keyboardStick, 0.2, 1, d.keyboardStick),
     map: isMapId(s.map) ? s.map : d.map,
+    realism: {
+      propWash: typeof s.realism?.propWash === 'boolean' ? s.realism.propWash : d.realism.propWash,
+      battery: typeof s.realism?.battery === 'boolean' ? s.realism.battery : d.realism.battery,
+      crashes: CRASH_MODES.includes(s.realism?.crashes as CrashMode) ? (s.realism!.crashes as CrashMode) : d.realism.crashes,
+    },
   };
 }
 

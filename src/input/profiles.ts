@@ -31,6 +31,8 @@ export interface ControllerProfile {
   reset: Binding | null;
   mode: Binding | null;
   camera: Binding | null;
+  /** Turtle mode (flip over after a crash): a button toggles it, a switch holds it. */
+  turtle: Binding | null;
 }
 
 export type PresetId = 'ps5' | 'radio' | 'generic';
@@ -65,6 +67,7 @@ export const PRESETS: Record<PresetId, { label: string; make: () => ControllerPr
       reset: { kind: 'button', index: 0 }, // Cross
       mode: { kind: 'button', index: 3 }, // Triangle
       camera: { kind: 'button', index: 2 }, // Square
+      turtle: { kind: 'button', index: 1 }, // Circle
     }),
   },
   radio: {
@@ -84,6 +87,7 @@ export const PRESETS: Record<PresetId, { label: string; make: () => ControllerPr
       reset: null,
       mode: null,
       camera: null,
+      turtle: { kind: 'axis', index: 5, threshold: 0, above: true }, // CH6
     }),
   },
   generic: {
@@ -186,6 +190,7 @@ export function normalizeProfile(raw: unknown): ControllerProfile | null {
     reset: bind(p.reset, base.reset),
     mode: bind(p.mode, base.mode),
     camera: bind(p.camera, base.camera),
+    turtle: bind(p.turtle, base.turtle),
   };
 }
 

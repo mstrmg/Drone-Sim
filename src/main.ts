@@ -86,6 +86,8 @@ const state = {
   chase: false,
   warning: '',
   warningUntil: 0,
+  /** Turtle mode: 'pending' while selected and disarmed, 'active' while armed and flipping. */
+  turtle: 'off' as 'off' | 'pending' | 'active',
 };
 let prevSticks: Sticks = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
 let accumulator = 0;
@@ -99,6 +101,7 @@ function applySettings(): void {
   }
   fc.rates = settings.rates;
   fc.mode = settings.flightMode;
+  quad.realism = { propWash: settings.realism.propWash, battery: settings.realism.battery, damage: settings.realism.crashes === 'damage' };
   setFov();
 }
 
@@ -117,6 +120,8 @@ function resetQuad(): void {
   state.crashed = false;
   state.flightTime = 0;
   state.tookOff = false;
+  state.turtle = 'off';
+  quad.turtle = false;
   chasePos.set(0, 1.2, 3);
 }
 
@@ -136,7 +141,15 @@ function tryArm(throttle: number): void {
   if (state.crashed) return warn('RESET FIRST');
   if (throttle > ARM_MAX_THROTTLE) return warn('THROTTLE HIGH · LOWER TO ARM');
   state.armed = true;
+  if (state.turtle === 'pending') state.turtle = 'active';
+  quad.turtle = state.turtle === 'active';
   fc.reset();
+}
+
+function disarm(turtleSwitchOn: boolean | null): void {
+  state.armed = false;
+  if (state.turtle === 'active') state.turtle = turtleSwitchOn ? 'pending' : 'off';
+  quad.turtle = false;
 }
 
 // ---------------------------------------------------------------- Main loop
@@ -159,13 +172,20 @@ function frame(now: number): void {
     else if (inp.modeToggle) settings.flightMode = settings.flightMode === 'acro' ? 'angle' : 'acro';
     fc.mode = settings.flightMode;
 
+    // Turtle mode is selected while disarmed: a switch holds it, a button or key toggles it.
+    if (inp.turtleSwitch !== null) {
+      if (!state.armed) state.turtle = inp.turtleSwitch ? 'pending' : 'off';
+    } else if (inp.turtleToggle && !state.armed) {
+      state.turtle = state.turtle === 'off' ? 'pending' : 'off';
+    }
+
     if (inp.armSwitch !== null) {
       if (inp.armSwitch && !state.armed && !state.crashed) {
         if (inp.sticks.throttle <= ARM_MAX_THROTTLE) tryArm(inp.sticks.throttle);
         else if (performance.now() > state.warningUntil) warn('THROTTLE HIGH · LOWER TO ARM');
-      } else if (!inp.armSwitch && state.armed) state.armed = false;
+      } else if (!inp.armSwitch && state.armed) disarm(inp.turtleSwitch);
     } else if (inp.armToggle) {
-      if (state.armed) state.armed = false;
+      if (state.armed) disarm(inp.turtleSwitch);
       else tryArm(inp.sticks.throttle);
     }
 
@@ -184,9 +204,10 @@ function frame(now: number): void {
       sticks.pitch = s0.pitch + (s1.pitch - s0.pitch) * a;
       sticks.yaw = s0.yaw + (s1.yaw - s0.yaw) * a;
       sticks.throttle = s0.throttle + (s1.throttle - s0.throttle) * a;
-      const out = state.armed ? fc.update(sticks, quad.gyroDegPerSec(), quad.orientation) : null;
+      let out: number[] | null = null;
+      if (state.armed) out = state.turtle === 'active' ? fc.turtleMix(sticks, quad.orientation) : fc.update(sticks, quad.gyroDegPerSec(), quad.orientation);
       const res = quad.step(PHYS_DT, out, nearby);
-      if (res.impactSpeed > CRASH_SPEED && !state.crashed) {
+      if (settings.realism.crashes === 'classic' && res.impactSpeed > CRASH_SPEED && !state.crashed) {
         state.crashed = true;
         state.armed = false;
       }
@@ -196,6 +217,7 @@ function frame(now: number): void {
       }
     }
     prevSticks = { ...s1 };
+    if (state.armed && settings.realism.battery && quad.battery.cellVoltage < 3.4 && performance.now() > state.warningUntil) warn('LOW BATTERY · LAND');
     if (quad.position.length() > OUT_OF_BOUNDS || quad.position.y < field.groundHeight(quad.position.x, quad.position.z) - 5 || !Number.isFinite(quad.position.y)) resetQuad();
   } else {
     prevSticks = { ...inp.sticks };
@@ -244,6 +266,10 @@ function frame(now: number): void {
     source: inp.sourceName,
     warning: state.warning,
     chase: state.chase,
+    battery: settings.realism.battery ? { voltage: quad.battery.voltage, cells: quad.battery.p.cells, mah: quad.battery.usedAh * 1000 } : null,
+    props: settings.realism.crashes === 'damage' ? quad.propHealth : null,
+    turtle: state.turtle,
+    propsBroken: settings.realism.crashes === 'damage' && quad.allPropsBroken,
   });
 
   renderer.render(scene, camera);

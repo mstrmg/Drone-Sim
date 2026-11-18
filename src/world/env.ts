@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Collider } from '../sim/colliders';
 import { seededRandom } from './rand';
+import { flatTexture } from './pbr';
 import { canvasTexture } from './textures';
 
 export { seededRandom };
@@ -209,9 +210,11 @@ export function groundMesh(
   return mesh;
 }
 
-/** A texture layer of the splat ground, repeating every `tile` metres. */
+/** A texture layer of the splat ground, repeating every `tile` metres. Missing normal or roughness maps are flat. */
 export interface SplatLayer {
   map: THREE.Texture;
+  normalMap?: THREE.Texture;
+  roughnessMap?: THREE.Texture;
   tile: number;
 }
 
@@ -222,7 +225,7 @@ export interface SplatGroundOptions {
   /** Colour multiplier for the base (grass) layer, per vertex. Slope is 1 − normal.y. */
   tint: (x: number, z: number, y: number, slope: number) => [number, number, number];
   base: SplatLayer;
-  /** Layers blended over the base by the mask's red, green and blue channels, in that order (last wins). */
+  /** Layers blended over the base by the mask's red, green and blue channels: asphalt, gravel, dirt. */
   layers: [SplatLayer, SplatLayer, SplatLayer];
   /** Mask area and resolution. Outside it only the base layer shows. */
   mask: { x0: number; z0: number; size: number; res: number };
@@ -231,9 +234,13 @@ export interface SplatGroundOptions {
   maxAnisotropy: number;
 }
 
+const FLAT_NORMAL = flatTexture(128, 128, 255);
+const FULL_ROUGH = flatTexture(255, 255, 255);
+
 /**
- * One continuous ground surface that blends several textures (grass, asphalt, gravel, dirt) by a painted mask, with
- * wet puddles. Everything lies in the same triangles, so there are no stacked layers to flicker against each other.
+ * One continuous ground surface that blends several PBR layers (grass, asphalt, gravel, dirt) by a painted mask,
+ * with wet puddles. Colour, normal and roughness are all blended, and everything lies in the same triangles, so
+ * there are no stacked layers to flicker against each other.
  */
 export function splatGround(o: SplatGroundOptions): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(o.size, o.size, o.segments, o.segments);
@@ -271,61 +278,99 @@ export function splatGround(o: SplatGroundOptions): THREE.Mesh {
   mask.anisotropy = Math.min(4, o.maxAnisotropy);
 
   for (const l of [o.base, ...o.layers]) {
-    l.map.wrapS = l.map.wrapT = THREE.RepeatWrapping;
-    l.map.anisotropy = o.maxAnisotropy;
+    for (const t of [l.map, l.normalMap, l.roughnessMap]) {
+      if (!t) continue;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = o.maxAnisotropy;
+    }
   }
+  const [A, B, C] = o.layers;
   const mat = new THREE.MeshStandardMaterial({ map: o.base.map, roughness: 1 });
   const uniforms = {
     splatMask: { value: mask },
-    splatA: { value: o.layers[0].map },
-    splatB: { value: o.layers[1].map },
-    splatC: { value: o.layers[2].map },
-    splatTiles: { value: new THREE.Vector4(o.base.tile, o.layers[0].tile, o.layers[1].tile, o.layers[2].tile) },
+    baseN: { value: o.base.normalMap ?? FLAT_NORMAL },
+    baseR: { value: o.base.roughnessMap ?? FULL_ROUGH },
+    splatA: { value: A.map },
+    splatAN: { value: A.normalMap ?? FLAT_NORMAL },
+    splatAR: { value: A.roughnessMap ?? FULL_ROUGH },
+    splatB: { value: B.map },
+    splatBN: { value: B.normalMap ?? FLAT_NORMAL },
+    splatBR: { value: B.roughnessMap ?? FULL_ROUGH },
+    splatC: { value: C.map },
+    splatCN: { value: C.normalMap ?? FLAT_NORMAL },
+    splatCR: { value: C.roughnessMap ?? FULL_ROUGH },
+    splatTiles: { value: new THREE.Vector4(o.base.tile, A.tile, B.tile, C.tile) },
     maskRect: { value: new THREE.Vector3(o.mask.x0, o.mask.z0, o.mask.size) },
   };
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 groundTint;\nvarying vec3 vGroundTint;\nvarying vec2 vWorldXZ;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundTint = groundTint;\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      .replace('#include <common>', '#include <common>\nattribute vec3 groundTint;\nvarying vec3 vGroundTint;\nvarying vec2 vWorldXZ;\nvarying vec3 vWorldNormal;')
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvGroundTint = groundTint;\nvWorldXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\nvWorldNormal = normalize(mat3(modelMatrix) * objectNormal);',
+      );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
         uniform sampler2D splatMask;
-        uniform sampler2D splatA;
-        uniform sampler2D splatB;
-        uniform sampler2D splatC;
+        uniform sampler2D baseN, baseR, splatA, splatAN, splatAR, splatB, splatBN, splatBR, splatC, splatCN, splatCR;
         uniform vec4 splatTiles;
         uniform vec3 maskRect;
         varying vec3 vGroundTint;
-        varying vec2 vWorldXZ;`,
+        varying vec2 vWorldXZ;
+        varying vec3 vWorldNormal;`,
       )
       .replace(
         '#include <map_fragment>',
         `vec4 splat = texture2D(splatMask, (vWorldXZ - maskRect.xy) / maskRect.z);
         vec2 wp = vWorldXZ;
-        // Two scales of grass, one rotated, so the repeat is hard to spot.
-        vec3 g1 = texture2D(map, wp / splatTiles.x).rgb;
-        vec3 g2 = texture2D(map, mat2(0.8, -0.6, 0.6, 0.8) * wp / (splatTiles.x * 3.7)).rgb;
-        vec3 ground = mix(g1, g2, 0.45) * vGroundTint;
-        // Fine grain from a small-scale sample, so grass still has texture right under the quad.
-        float grain = dot(texture2D(map, wp / (splatTiles.x * 0.17)).rgb, vec3(0.6));
-        ground *= 0.55 + 1.55 * grain;
-        vec3 dirt = texture2D(splatC, wp / splatTiles.w).rgb;
-        vec3 grav = texture2D(splatB, wp / splatTiles.z).rgb;
-        vec3 asph = texture2D(splatA, wp / splatTiles.y).rgb;
-        ground = mix(ground, dirt, smoothstep(0.15, 0.85, splat.b));
-        ground = mix(ground, grav, smoothstep(0.3, 0.7, splat.g));
-        float asphW = smoothstep(0.4, 0.6, splat.r);
-        ground = mix(ground, asph, asphW);
-        float wet = smoothstep(0.35, 0.75, splat.a) * asphW;
+        vec2 uvG = wp / splatTiles.x;
+        // A second, rotated and larger sample of the base layer hides its repeat.
+        vec2 uvG2 = mat2(0.8, -0.6, 0.6, 0.8) * wp / (splatTiles.x * 3.7);
+        vec2 uvA = wp / splatTiles.y;
+        vec2 uvB = wp / splatTiles.z;
+        vec2 uvC = wp / splatTiles.w;
+        float wC = smoothstep(0.15, 0.85, splat.b);
+        float wB = smoothstep(0.3, 0.7, splat.g);
+        float wA = smoothstep(0.4, 0.6, splat.r);
+        float wet = smoothstep(0.35, 0.75, splat.a) * wA;
+        vec3 ground = mix(texture2D(map, uvG).rgb, texture2D(map, uvG2).rgb, 0.4) * vGroundTint;
+        ground = mix(ground, texture2D(splatC, uvC).rgb, wC);
+        ground = mix(ground, texture2D(splatB, uvB).rgb, wB);
+        ground = mix(ground, texture2D(splatA, uvA).rgb, wA);
         ground *= mix(1.0, 0.45, wet);
         diffuseColor.rgb *= ground;`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.07, wet);');
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        float gr = mix(texture2D(baseR, uvG).g, texture2D(baseR, uvG2).g, 0.4);
+        gr = mix(gr, texture2D(splatCR, uvC).g, wC);
+        gr = mix(gr, texture2D(splatBR, uvB).g, wB);
+        gr = mix(gr, texture2D(splatAR, uvA).g, wA);
+        roughnessFactor = mix(roughnessFactor * gr, 0.07, wet);`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        {
+          vec3 tn = mix(texture2D(baseN, uvG).xyz, texture2D(baseN, uvG2).xyz, 0.4);
+          tn = mix(tn, texture2D(splatCN, uvC).xyz, wC);
+          tn = mix(tn, texture2D(splatBN, uvB).xyz, wB);
+          tn = mix(tn, texture2D(splatAN, uvA).xyz, wA);
+          tn = mix(tn * 2.0 - 1.0, vec3(0.0, 0.0, 1.0), wet); // puddles are flat
+          // UVs run along world x and z, so the tangent frame follows the terrain normal.
+          vec3 Nw = normalize(vWorldNormal);
+          vec3 T = normalize(vec3(1.0, 0.0, 0.0) - Nw * Nw.x);
+          vec3 Bt = cross(T, Nw);
+          vec3 nW = normalize(T * tn.x + Bt * tn.y + Nw * max(tn.z, 0.2));
+          normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
+        }`,
+      );
   };
-  mat.customProgramCacheKey = () => 'splat-ground';
+  mat.customProgramCacheKey = () => 'splat-ground-pbr';
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   return mesh;

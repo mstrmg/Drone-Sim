@@ -28,6 +28,7 @@ canvas { display: block; }
 .osd-msg { top: 62%; left: 50%; transform: translateX(-50%); font-size: 1.15em; }
 .osd-warn { top: 30%; left: 50%; transform: translateX(-50%); color: #ffd23f; }
 .blink { animation: blink 0.8s steps(2) infinite; }
+.osd-low { color: #ff5a4f; }
 @keyframes blink { 50% { opacity: 0; } }
 
 .toast { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 6px;

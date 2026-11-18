@@ -4,7 +4,8 @@ import { Builder } from '../builder';
 import { addLights, makeSky, splatGround, type Field } from '../env';
 import { industrialMaterials, type IndustrialMaterials } from '../materials';
 import { fbm2, seededRandom, smoothstep } from '../rand';
-import { dirtTexture, GRAFFITI_CELLS, graffitiAtlas, grassTexture, gravelTexture, tuftTexture } from '../textures';
+import { pbrSet } from '../pbr';
+import { GRAFFITI_CELLS, graffitiAtlas, gravelTexture, tuftTexture } from '../textures';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const Q = (x: number, y: number, z: number) => new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z));
@@ -93,7 +94,7 @@ export function buildBando(maxAnisotropy: number): Field {
   });
 
   b.colliders.push(new HeightfieldCollider(bandoTerrain));
-  group.add(ground(m, maxAnisotropy));
+  group.add(ground(maxAnisotropy));
 
   factory(b, m);
   warehouse(b, m);
@@ -170,13 +171,13 @@ function lotDistance(x: number, z: number): number {
 }
 
 const mix3 = (a: number[], c: number[], t: number): [number, number, number] => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, a[2] + (c[2] - a[2]) * t];
-const DRY = [1.28, 1.08, 0.78];
-const LUSH = [0.72, 0.88, 0.7];
-const ROCK = [1.25, 1.0, 1.65];
+const DRY = [1.08, 1.02, 0.85];
+const LUSH = [0.78, 0.95, 0.72];
+const ROCK = [1.12, 1.0, 1.2];
 
 /** Vertex tint multiplied over the grass: dry and lush patches and rocky slopes. */
 function groundTint(x: number, z: number, _y: number, slope: number): [number, number, number] {
-  let c = mix3([1, 1, 1], DRY, smoothstep(0.45, 0.72, fbm2(x * 0.018, z * 0.018)));
+  let c = mix3([0.88, 1.04, 0.8], DRY, smoothstep(0.45, 0.72, fbm2(x * 0.018, z * 0.018)));
   c = mix3(c, LUSH, 0.6 * smoothstep(0.55, 0.8, fbm2(x * 0.045 + 7, z * 0.045 - 3)));
   return mix3(c, ROCK, smoothstep(0.03, 0.09, slope));
 }
@@ -237,17 +238,17 @@ export function surfaceWeights(x: number, z: number): [number, number, number, n
 }
 
 /** One ground surface for the whole map: grass, asphalt, gravel and dirt blended in the same triangles. */
-function ground(m: M, maxAnisotropy: number): THREE.Mesh {
+function ground(maxAnisotropy: number): THREE.Mesh {
   return splatGround({
     size: 2000,
     segments: 220,
     height: bandoTerrain,
     tint: groundTint,
-    base: { map: grassTexture(), tile: 10 },
+    base: { ...pbrSet('grass', maxAnisotropy), tile: 3.2 },
     layers: [
-      { map: m.road.map!, tile: 20 },
+      { ...pbrSet('asphalt', maxAnisotropy), tile: 4.5 },
       { map: gravelTexture(), tile: 3 },
-      { map: dirtTexture(), tile: 6 },
+      { ...pbrSet('dirt', maxAnisotropy), tile: 3 },
     ],
     mask: { x0: -300, z0: -330, size: 600, res: 1024 },
     weights: surfaceWeights,
@@ -739,7 +740,7 @@ function railYard(b: Builder, m: M): void {
     [RAIL_X, -127, 43],
     [SIDING_X, -110, 30],
   ]) {
-    for (let z = z0; z < z1; z += 0.75) b.box(x, 0.06, z, 2.6, 0.14, 0.24, m.wood, 0, false);
+    for (let z = z0; z < z1; z += 0.75) b.box(x, 0.06, z, 2.6, 0.14, 0.24, m.woodDark, 0, false);
     for (const dx of [-0.72, 0.72]) for (let z = z0; z < z1; z += 34) {
         const len = Math.min(34, z1 - z);
         b.box(x + dx, 0.2, z + len / 2, 0.08, 0.16, len, m.steel, 0, false);
@@ -1062,7 +1063,7 @@ function vegetation(group: THREE.Group, b: Builder, maxAnisotropy: number): void
     pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.7, pos.getZ(i) * k);
   }
   rockGeo.computeVertexNormals();
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x8e8a82, roughness: 0.95, flatShading: true });
+  const rockMat = new THREE.MeshStandardMaterial({ ...pbrSet('rock', maxAnisotropy), roughness: 1, flatShading: true });
   const R = 260;
   const rocks = new THREE.InstancedMesh(rockGeo, rockMat, R);
   let k = 0;

@@ -24,10 +24,10 @@ import {
 } from '../input/profiles';
 import { FREESTYLE_5IN, hoverThrottle } from '../sim/params';
 import { MAPS, type MapId } from '../world/maps';
-import { defaultSettings, parseSettings, replaceSettings, saveSettings, type Settings } from '../settings';
+import { defaultSettings, parseSettings, replaceSettings, saveSettings, type CrashMode, type Settings } from '../settings';
 
 type Channel = 'throttle' | 'yaw' | 'pitch' | 'roll';
-type Action = 'arm' | 'reset' | 'mode' | 'camera';
+type Action = 'arm' | 'reset' | 'mode' | 'camera' | 'turtle';
 type Tab = 'controls' | 'rates' | 'camera' | 'flight' | 'help';
 const CHANNELS: Channel[] = ['throttle', 'yaw', 'pitch', 'roll'];
 const ACTIONS: { key: Action; label: string }[] = [
@@ -35,6 +35,7 @@ const ACTIONS: { key: Action; label: string }[] = [
   { key: 'reset', label: 'Reset' },
   { key: 'mode', label: 'Angle mode' },
   { key: 'camera', label: 'Chase camera' },
+  { key: 'turtle', label: 'Turtle mode' },
 ];
 const AXIS_COLORS: Record<RateAxis, string> = { roll: '#ff7a59', pitch: '#4fc3f7', yaw: '#c5e85a' };
 const HOVER = hoverThrottle(FREESTYLE_5IN);
@@ -701,6 +702,17 @@ export class Menu {
       <p class="muted">Acro is how freestyle is flown: the sticks set rotation speed and the quad holds its attitude when you let go.
       Angle mode levels the quad for you and is easier with a keyboard.</p>
       <div class="row"><label>Keyboard stick strength <input type="range" min="0.2" max="1" step="0.05" class="kb"></label><span class="kb-v"></span></div>
+      <h2>Realism</h2>
+      <div class="row"><label><input type="checkbox" class="r-wash"> Prop wash</label></div>
+      <p class="muted small">Dropping straight down into your own wake costs thrust and shakes the quad, like a real 5". Carry some forward speed through dives to stay out of it.</p>
+      <div class="row"><label><input type="checkbox" class="r-bat"> Battery sag</label></div>
+      <p class="muted small">A 6S 1300 mAh pack: voltage drops under a punch-out and over the flight, so the quad gets weaker as the pack drains. Reset gives you a fresh pack.</p>
+      <div class="row"><label>Crashes <select class="r-crash">
+        <option value="damage">Prop damage (stay armed, turtle to recover)</option>
+        <option value="classic">Disarm on hard hits</option>
+        <option value="off">Off (bounce, no damage)</option></select></label></div>
+      <p class="muted small">With prop damage, hits chip or break props: less thrust, vibration, and a broken prop makes none. If you land upside down,
+      disarm, turn on turtle mode (PS5 Circle, keyboard T, radio CH6), arm and push the stick the way you want to flip.</p>
       <h2>Settings</h2>
       <p class="muted small">Settings are saved in this browser. Copy them to keep a backup or move them to another computer,
       then paste them back here (or load a saved .json file) to restore them.</p>
@@ -736,6 +748,15 @@ export class Menu {
       this.commit();
     });
     this.slider(wrap, '.kb', '.kb-v', () => s.keyboardStick, (v) => (s.keyboardStick = v), pct);
+    const wash = wrap.querySelector<HTMLInputElement>('.r-wash')!;
+    const bat = wrap.querySelector<HTMLInputElement>('.r-bat')!;
+    const crash = wrap.querySelector<HTMLSelectElement>('.r-crash')!;
+    wash.checked = s.realism.propWash;
+    bat.checked = s.realism.battery;
+    crash.value = s.realism.crashes;
+    wash.addEventListener('change', () => ((s.realism.propWash = wash.checked), this.commit()));
+    bat.addEventListener('change', () => ((s.realism.battery = bat.checked), this.commit()));
+    crash.addEventListener('change', () => ((s.realism.crashes = crash.value as CrashMode), this.commit()));
     const msg = wrap.querySelector<HTMLElement>('.settings-msg')!;
     const box = wrap.querySelector<HTMLTextAreaElement>('.settings-json')!;
     const json = () => JSON.stringify(s, null, 2);
@@ -810,7 +831,7 @@ export class Menu {
       <ol>
         <li>Connect your controller and open <b>Controls</b> to check the mapping. Run <b>Calibrate sticks</b> once.</li>
         <li>Lower the throttle and arm (PS5: <b>R1</b>, radio: your arm switch, keyboard: <b>Space</b>).</li>
-        <li>Fly. Crash, then reset (PS5: <b>Cross</b>, keyboard: <b>R</b>, radio: bind a switch in Controls).</li>
+        <li>Fly. After a crash, reset (PS5: <b>Cross</b>, keyboard: <b>R</b>, radio: bind a switch in Controls), or if you are upside down, flip back over with turtle mode.</li>
       </ol>
       <h2>Keyboard</h2>
       <table class="keys">
@@ -822,15 +843,16 @@ export class Menu {
         <tr><td>R</td><td>Reset to the launch pad</td></tr>
         <tr><td>M</td><td>Toggle acro / angle mode</td></tr>
         <tr><td>C</td><td>Toggle FPV / chase camera</td></tr>
+        <tr><td>T</td><td>Turtle mode (while disarmed): arm, then push a stick to flip over</td></tr>
         <tr><td>Esc</td><td>Menu</td></tr>
       </table>
       <h2>PS5 DualSense defaults (Mode 2)</h2>
-      <p>Left stick: throttle and yaw. Right stick: pitch and roll. R1 arm, Cross reset, Triangle angle mode, Square chase camera, Options menu.</p>
+      <p>Left stick: throttle and yaw. Right stick: pitch and roll. R1 arm, Cross reset, Triangle angle mode, Square chase camera, Circle turtle mode, Options menu.</p>
       <p>The throttle stick springs back to the middle, and the middle is 0% throttle: push up to climb, let go to cut the
       throttle. The quad hovers at about ${pct(HOVER)} of the upward travel. Press R1 with the stick resting to arm.
       You can change this in <b>Controls → Throttle</b>.</p>
       <h2>Radiomaster Pocket</h2>
-      <p>Set the radio to USB Joystick mode. The default mapping is AETR with CH5 as the arm switch. Use Detect and Bind in Controls if your channels differ.</p>`;
+      <p>Set the radio to USB Joystick mode. The default mapping is AETR with CH5 as the arm switch and CH6 as turtle mode. Use Detect and Bind in Controls if your channels differ.</p>`;
   }
 }
 
